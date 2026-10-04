@@ -1020,6 +1020,11 @@ bool installFolder(const Paths &p, const string &staged, const string &name) {
     string old = p.tmp + "/" + name + ".old";
     if (!renameFile(final, old))
         return false;
+    // the user's own settings files are theirs even if the new package ships a file of that name
+    for (const char *keep : {"ab_settings.ini", "pad.ini"}) {
+        if (exists(old + "/" + keep))
+            removeFile(staged + "/" + keep);
+    }
     mergeOld(old, staged);
     if (!renameFile(staged, final)) {
         renameFile(old, final); // back as it was

@@ -253,6 +253,9 @@ int main() {
     // ---- a newer version replaces the folder and keeps what the package did not ship
     makeDir(app + "/saves");
     writeFile(app + "/saves/slot1.sav", "my save");
+    const string settings = "[Settings]\r\nPadMode=x360\r\n";
+    writeFile(app + "/ab_settings.ini", settings);
+    writeFile(app + "/pad.ini", "virtual = psc\n");
     writeFile(app + "/game.dat", "my game data");
     writeFile(app + "/data/user.txt", "mine too");
     Run up = run("--start --mod \"" + mods + "/normal_1.1.mod\" --apps \"" + apps + "\"");
@@ -263,6 +266,8 @@ int main() {
     check(contains(readFile(app + "/app.ini"), "Version=1.1\n") &&
               contains(readFile(app + "/app.ini"), "PeSource=normal_1.1.mod\n"),
           "app.ini says the new version and file");
+    check(readFile(app + "/ab_settings.ini") == settings && readFile(app + "/pad.ini") == "virtual = psc\n",
+          "a changed package keeps ab_settings.ini (byte for byte) and pad.ini");
     check(readFile(app + "/saves/slot1.sav") == "my save" && readFile(app + "/game.dat") == "my game data" &&
               readFile(app + "/data/user.txt") == "mine too",
           "user files kept: at the root, in a new folder, inside a folder the package ships");
