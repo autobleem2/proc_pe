@@ -1,0 +1,131 @@
+# proc_pe CI: the self-test on the host, then the processor for every target in the shared image
+# (ci/build.sh), packed as one folder with a binary per platform key - pe-<version>.zip, laid out as
+# System/Processors/pe/. A v* tag publishes it as a release; develop keeps the rolling `nightly`
+# pre-release current. Gated by AB_CI_ENABLED, like every autobleem2 repository.
+name: build
+on:
+  push:
+    branches: [develop, master]
+    tags: ['v*']
+  pull_request:
+    branches: [develop, master]
+  workflow_dispatch:
+    inputs:
+      force_fallback:
+        type: boolean
+        required: false
+        default: false
+        description: test-only - force the build job onto ubuntu-24.04 (see autobleem-build's route.yml)
+# a container job's steps run under sh unless told otherwise, and sh has no [[ ]]
+defaults:
+  run:
+    shell: bash
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  # Which runner the build job below uses: the laptop, then the build server, then ubuntu-24.04 -
+  # see autobleem-build's route.yml for the order and every fallback (always hosted for a PR).
+  route:
+    if: vars.AB_CI_ENABLED == 'true'
+    uses: autobleem2/autobleem-build/.github/workflows/route.yml@develop
+    with:
+      force_fallback: ${{ inputs.force_fallback == true }}
+    secrets: inherit
+
+  # A job whose type is `uses: <reusable workflow>` cannot have its outputs read by a downstream
+  # job's `runs-on:` directly (GitHub rejects needs.route.outputs.* there at parse time: "Unrecognized
+  # named-value: 'needs'") - this plain job re-exports route's output so build's runs-on can see it.
+  route_runner:
+    needs: route
+    if: vars.AB_CI_ENABLED == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 2
+    outputs:
+      runs_on: ${{ needs.route.outputs.runs_on }}
+    steps:
+      - run: echo "routed to ${{ needs.route.outputs.runner }}"
+
+  build:
+    needs: route_runner
+    if: vars.AB_CI_ENABLED == 'true'
+    runs-on: ${{ fromJSON(needs.route_runner.outputs.runs_on) }}
+    timeout-minutes: 90
+    container:
+      image: ghcr.io/autobleem2/autobleem-build:${{ startsWith(github.ref, 'refs/tags/v') && 'latest' || 'develop' }}
+      credentials:
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+    env:
+      SCCACHE_DIR: /sccache
+      SCCACHE_CACHE_SIZE: 1G
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - name: Restore sccache cache
+        uses: actions/cache@v6
+        with:
+          path: /sccache
+          key: sccache-proc-pe-${{ github.sha }}
+          restore-keys: sccache-proc-pe-
+      - name: Version
+        run: |
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then echo "AB_VERSION=${GITHUB_REF_NAME#v}" >> "$GITHUB_ENV"
+          else echo "AB_VERSION=$(sed -n 's/^Version=//p' package/processor.ini | tr -d '\r')-$(date -u +%Y%m%d)-$(git rev-parse --short HEAD)" >> "$GITHUB_ENV"; fi
+      - name: Self-test (host)
+        run: ci/build.sh native
+      - name: The console (psc)
+        run: ci/build.sh psc
+      - name: Raspberry Pi (linux-armhf, linux-arm64)
+        run: ci/build.sh rpi rpi64
+      - name: The PC stick (linux-i386, self-test again)
+        run: ci/build.sh pcusb
+      - name: Windows (windows-x86_64)
+        run: ci/build.sh win
+      - name: Package
+        run: ci/build.sh package
+      - uses: actions/upload-artifact@v7
+        with:
+          name: pe-package
+          path: dist/*.zip
+          retention-days: 30
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: build
+    runs-on: ubuntu-24.04
+    permissions: { contents: write }
+    steps:
+      - uses: actions/download-artifact@v8
+        with: { name: pe-package, path: out }
+      - name: Attach to the release
+        env: { GH_TOKEN: '${{ github.token }}' }
+        run: |
+          prerelease=""; case "${GITHUB_REF_NAME}" in *-*) prerelease="--prerelease";; esac
+          gh release create "${GITHUB_REF_NAME}" --repo "${GITHUB_REPOSITORY}" \
+            --title "PE apps ${GITHUB_REF_NAME}" --generate-notes $prerelease out/*.zip || \
+          gh release upload "${GITHUB_REF_NAME}" --repo "${GITHUB_REPOSITORY}" out/*.zip --clobber
+
+  nightly:
+    if: github.ref == 'refs/heads/develop' && github.event_name != 'pull_request'
+    needs: build
+    runs-on: ubuntu-24.04
+    permissions: { contents: write }
+    steps:
+      - uses: actions/download-artifact@v8
+        with: { name: pe-package, path: out }
+      # the admin App's token, so the new nightly starts autobleem-appliance's assembly at once (a repository
+      # without AB_ADMIN_APP_ID skips this, and the appliance's schedule assembles it instead)
+      - id: app
+        if: vars.AB_ADMIN_APP_ID != ''
+        uses: actions/create-github-app-token@v2
+        with:
+          app-id: ${{ vars.AB_ADMIN_APP_ID }}
+          private-key: ${{ secrets.AB_ADMIN_APP_KEY }}
+          owner: autobleem2
+          repositories: autobleem-appliance
+      - uses: autobleem2/autobleem-build/.github/actions/nightly-release@develop
+        with:
+          files: out/*.zip
+          dispatch-token: ${{ steps.app.outputs.token }}
