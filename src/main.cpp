@@ -1354,7 +1354,7 @@ Result convert(const Paths &p, const map<string, CompatRule> &compat, const stri
         string ini = "Title=" + title + "\nAuthor=" + author + "\nVersion=" + shown(control.version, 60) + "\n";
         if (exists(l.staged + "/" + fn + ".png"))
             ini += "Image=" + fn + ".png\n";
-        ini += "Readme=readme.txt\nStartup=run.sh\nCategory=PE\nPeSource=" + modName + "\n";
+        ini += "Readme=readme.txt\nStartup=run.sh\nExec.psc=run.sh\nCategory=PE\nPeSource=" + modName + "\n";
         const char *runSh = "#!/bin/sh\n"
                             "# PE App launcher - generated, do not edit\n"
                             "APP_DIR=\"$(cd \"$(dirname \"$0\")\" && pwd)\"\n"

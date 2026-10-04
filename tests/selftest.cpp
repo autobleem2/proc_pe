@@ -231,7 +231,7 @@ int main() {
           "a symlink and a hardlink inside the folder become copies");
     check(readFile(app + "/app.ini") ==
               "Title=Normal App\nAuthor=An Author\nVersion=1.0\nImage=normalapp.png\nReadme=readme.txt\n"
-              "Startup=run.sh\nCategory=PE\nPeSource=normal_1.0.mod\n",
+              "Startup=run.sh\nExec.psc=run.sh\nCategory=PE\nPeSource=normal_1.0.mod\n",
           "app.ini as the contract has it");
     check(readFile(app + "/run.sh") == expectedRunSh && executable(app + "/run.sh"), "run.sh, executable");
     string readme = readFile(app + "/readme.txt");
@@ -314,10 +314,11 @@ int main() {
     check(m.has("9/9") || m.has("8/9"), "the packages are counted");
     check(readFile(apps4 + "/pe-alpha/app.ini") ==
               "Title=Alpha\nAuthor=ModMyClassic\nVersion=2.0-1\nImage=alpha.png\nReadme=readme.txt\nStartup=run.sh\n"
-              "Category=PE\nPeSource=two_1.0.mod\n",
+              "Exec.psc=run.sh\nCategory=PE\nPeSource=two_1.0.mod\n",
           "two launchers: the first (the author is the maintainer, without the address)");
     check(readFile(apps4 + "/pe-beta/app.ini") ==
-              "Title=Beta\nAuthor=Beta Author\nVersion=2.0-1\nReadme=readme.txt\nStartup=run.sh\nCategory=PE\n"
+              "Title=Beta\nAuthor=Beta "
+              "Author\nVersion=2.0-1\nReadme=readme.txt\nStartup=run.sh\nExec.psc=run.sh\nCategory=PE\n"
               "PeSource=two_1.0.mod\n",
           "two launchers: the second, named by its launcher_filename, no png no Image");
     check(m.mentions("blocked_1.0.mod: Backup not added (deletes the console's own games)") &&
@@ -328,7 +329,8 @@ int main() {
               !exists(apps4 + "/pe-openbor") && !exists(apps4 + "/openbor"),
           "a hybrid is skipped with the list's reason, its embedded App not unpacked");
     check(readFile(apps4 + "/pe-crlfapp/app.ini") ==
-              "Title=Crlf App\nAuthor=Bare\nVersion=1.0\nReadme=readme.txt\nStartup=run.sh\nCategory=PE\n"
+              "Title=Crlf "
+              "App\nAuthor=Bare\nVersion=1.0\nReadme=readme.txt\nStartup=run.sh\nExec.psc=run.sh\nCategory=PE\n"
               "PeSource=crlf_1.0.mod\n",
           "a CRLF launcher.cfg with quotes of both kinds, a comment and a bare value");
     check(contains(readFile(apps4 + "/pe-crlfapp/launcher.cfg"), "\r\n"), "and the file itself keeps its CRLF");
@@ -362,7 +364,8 @@ int main() {
     Run d = run("--start --mod \"" + mods2 + "/dpkg_1.0.mod\" --apps \"" + apps7 + "\"");
     check(d.code == 0 && d.has("#Adding Dpkg App") &&
               readFile(apps7 + "/pe-dpkgapp/app.ini") ==
-                  "Title=Dpkg App\nAuthor=Real Maker\nVersion=1.0\nReadme=readme.txt\nStartup=run.sh\nCategory=PE\n"
+                  "Title=Dpkg App\nAuthor=Real "
+                  "Maker\nVersion=1.0\nReadme=readme.txt\nStartup=run.sh\nExec.psc=run.sh\nCategory=PE\n"
                   "PeSource=dpkg_1.0.mod\n" &&
               readFile(apps7 + "/pe-dpkgapp/dpkgapp") == "program bytes\n" &&
               executable(apps7 + "/pe-dpkgapp/launch.sh") &&

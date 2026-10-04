@@ -35,6 +35,7 @@ that the compatibility list allows, `Apps/pe-<launcher_filename>/` holds:
   Image=<launcher_filename>.png        (only if the file exists)
   Readme=readme.txt
   Startup=run.sh
+  Exec.psc=run.sh                      (so only the console lists it)
   Category=PE
   PeSource=<the .mod file name>
   ```
