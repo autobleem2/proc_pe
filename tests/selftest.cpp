@@ -358,6 +358,15 @@ int main() {
               exists(apps5 + "/pe-beta/app.ini"),
           "--compat: the file's list is the list");
 
+    // ---- a section with neither block nor skip (the launcher's `remap=` for a mod) and unknown keys: convert normally
+    writeFile(root + "/compat2.ini", "[beta]\nremap=some_remap.so\nfuture_key=1\n[alpha]\n; a comment\nnote=x\n");
+    const string apps9 = root + "/Apps9";
+    Run rm = run("--start --mod \"" + mods2 + "/two_1.0.mod\" --apps \"" + apps9 + "\" --compat \"" + root +
+                 "/compat2.ini\"");
+    check(rm.code == 0 && !rm.starts("#WARN") && !rm.starts("#ERROR") && exists(apps9 + "/pe-beta/app.ini") &&
+              exists(apps9 + "/pe-alpha/app.ini") && readFile(apps9 + "/pe-beta/launch.sh") == Launch,
+          "a section with only remap= (or unknown keys) converts normally, no warning");
+
     // ---- a package the real dpkg-deb made
     const string apps7 = root + "/Apps7";
     copyData("dpkg_1.0.mod", mods2);
