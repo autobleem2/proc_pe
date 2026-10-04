@@ -231,7 +231,7 @@ int main() {
           "a symlink and a hardlink inside the folder become copies");
     check(readFile(app + "/app.ini") ==
               "Title=Normal App\nAuthor=An Author\nVersion=1.0\nImage=normalapp.png\nReadme=readme.txt\n"
-              "Startup=run.sh\nExec.psc=run.sh\nCategory=PE\nPeSource=normal_1.0.mod\n",
+              "Startup=run.sh\nExec.psc=run.sh\nCategory=PE\nPeSource=normal_1.0.mod\nPadMode=psc\n",
           "app.ini as the contract has it");
     check(readFile(app + "/run.sh") == expectedRunSh && executable(app + "/run.sh"), "run.sh, executable");
     string readme = readFile(app + "/readme.txt");
@@ -314,12 +314,12 @@ int main() {
     check(m.has("9/9") || m.has("8/9"), "the packages are counted");
     check(readFile(apps4 + "/pe-alpha/app.ini") ==
               "Title=Alpha\nAuthor=ModMyClassic\nVersion=2.0-1\nImage=alpha.png\nReadme=readme.txt\nStartup=run.sh\n"
-              "Exec.psc=run.sh\nCategory=PE\nPeSource=two_1.0.mod\n",
+              "Exec.psc=run.sh\nCategory=PE\nPeSource=two_1.0.mod\nPadMode=psc\n",
           "two launchers: the first (the author is the maintainer, without the address)");
     check(readFile(apps4 + "/pe-beta/app.ini") ==
               "Title=Beta\nAuthor=Beta "
               "Author\nVersion=2.0-1\nReadme=readme.txt\nStartup=run.sh\nExec.psc=run.sh\nCategory=PE\n"
-              "PeSource=two_1.0.mod\n",
+              "PeSource=two_1.0.mod\nPadMode=psc\n",
           "two launchers: the second, named by its launcher_filename, no png no Image");
     check(m.mentions("blocked_1.0.mod: Backup not added (deletes the console's own games)") &&
               !exists(apps4 + "/pe-backupinternallaunch") && exists(apps4 + "/pe-goodone/launch.sh"),
@@ -331,7 +331,7 @@ int main() {
     check(readFile(apps4 + "/pe-crlfapp/app.ini") ==
               "Title=Crlf "
               "App\nAuthor=Bare\nVersion=1.0\nReadme=readme.txt\nStartup=run.sh\nExec.psc=run.sh\nCategory=PE\n"
-              "PeSource=crlf_1.0.mod\n",
+              "PeSource=crlf_1.0.mod\nPadMode=psc\n",
           "a CRLF launcher.cfg with quotes of both kinds, a comment and a bare value");
     check(contains(readFile(apps4 + "/pe-crlfapp/launcher.cfg"), "\r\n"), "and the file itself keeps its CRLF");
     check(m.mentions("traversal_1.0.mod: unsafe name in the package") && !exists(apps4 + "/pe-evilapp") &&
@@ -367,6 +367,42 @@ int main() {
               exists(apps9 + "/pe-alpha/app.ini") && readFile(apps9 + "/pe-beta/launch.sh") == Launch,
           "a section with only remap= (or unknown keys) converts normally, no warning");
 
+    // ---- PadMode: from pad= in the list, psc without it, psc and a warning for a value that is not known
+    writeFile(root + "/compat3.ini", "[alpha]\npad=x360-kernel\n[beta]\npad=gamepad\n");
+    const string apps10 = root + "/Apps10";
+    Run pm = run("--start --mod \"" + mods2 + "/two_1.0.mod\" --apps \"" + apps10 + "\" --compat \"" + root +
+                 "/compat3.ini\"");
+    check(pm.code == 0 && contains(readFile(apps10 + "/pe-alpha/app.ini"), "PadMode=x360-kernel\n") &&
+              contains(readFile(apps10 + "/pe-beta/app.ini"), "PadMode=psc\n") &&
+              pm.mentions("#WARN - two_1.0.mod: Beta: pad mode gamepad is not known, using psc"),
+          "PadMode: the list's value, a warning and psc for an unknown one");
+    for (const char *mode : {"psc", "x360", "psc-kernel", "x360-kernel"}) {
+        writeFile(root + "/compat4.ini", string("[goodone]\npad=") + mode + "\n");
+        const string appsM = root + "/AppsM_" + mode;
+        run("--start --mod \"" + mods2 + "/blocked_1.0.mod\" --apps \"" + appsM + "\" --compat \"" + root +
+            "/compat4.ini\"");
+        check(contains(readFile(appsM + "/pe-goodone/app.ini"), string("PadMode=") + mode + "\n"),
+              string("PadMode accepts ") + mode);
+    }
+
+    // an unchanged package keeps its App (the list may have changed); a changed one is made again with the
+    // current value
+    const string apps11 = root + "/Apps11";
+    writeFile(root + "/compat5.ini", "[normalapp]\npad=x360\n");
+    run("--start --mod \"" + mods + "/normal_1.0.mod\" --apps \"" + apps11 + "\" --compat \"" + root +
+        "/compat5.ini\"");
+    check(contains(readFile(apps11 + "/pe-normalapp/app.ini"), "PadMode=x360\n"), "PadMode x360 written");
+    writeFile(root + "/compat5.ini", "[normalapp]\npad=psc-kernel\n");
+    run("--start --mod \"" + mods + "/normal_1.0.mod\" --apps \"" + apps11 + "\" --compat \"" + root +
+        "/compat5.ini\"");
+    check(contains(readFile(apps11 + "/pe-normalapp/app.ini"), "PadMode=x360\n"),
+          "an unchanged package keeps its App and its PadMode");
+    run("--start --mod \"" + mods + "/normal_1.1.mod\" --apps \"" + apps11 + "\" --compat \"" + root +
+        "/compat5.ini\"");
+    check(contains(readFile(apps11 + "/pe-normalapp/app.ini"), "PadMode=psc-kernel\n") &&
+              contains(readFile(apps11 + "/pe-normalapp/app.ini"), "Version=1.1\n"),
+          "a changed package is made again with the current PadMode");
+
     // ---- a package the real dpkg-deb made
     const string apps7 = root + "/Apps7";
     copyData("dpkg_1.0.mod", mods2);
@@ -375,7 +411,7 @@ int main() {
               readFile(apps7 + "/pe-dpkgapp/app.ini") ==
                   "Title=Dpkg App\nAuthor=Real "
                   "Maker\nVersion=1.0\nReadme=readme.txt\nStartup=run.sh\nExec.psc=run.sh\nCategory=PE\n"
-                  "PeSource=dpkg_1.0.mod\n" &&
+                  "PeSource=dpkg_1.0.mod\nPadMode=psc\n" &&
               readFile(apps7 + "/pe-dpkgapp/dpkgapp") == "program bytes\n" &&
               executable(apps7 + "/pe-dpkgapp/launch.sh") &&
               contains(readFile(apps7 + "/pe-dpkgapp/readme.txt"), "Built by the real tool."),

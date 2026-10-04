@@ -38,6 +38,8 @@ that the compatibility list allows, `Apps/pe-<launcher_filename>/` holds:
   Exec.psc=run.sh                      (so only the console lists it)
   Category=PE
   PeSource=<the .mod file name>
+  PadMode=<pad= of the launcher's section in pe_compat.ini: psc, x360, psc-kernel or x360-kernel; psc without it>
+  (an unknown pad value is a #WARN and psc; an unchanged package keeps its App, a changed one gets the current value)
   ```
 - `readme.txt`: the control Description (its free-text lines, not its metadata), "Put the files this program needs
   (game data) in this folder.", and a one-line compatibility note - never the package's own README;

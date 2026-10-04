@@ -451,6 +451,7 @@ struct CompatRule {
     bool block = false;
     bool skip = false;
     string reason;
+    string pad; // the App's PadMode (a launcher's default pad identity)
 };
 
 // [section] / key=value, section names lower-cased
@@ -476,6 +477,8 @@ map<string, CompatRule> parseCompat(const string &text) {
             current->skip = value == "1";
         else if (key == "reason")
             current->reason = value;
+        else if (key == "pad")
+            current->pad = lower(value);
     }
     return rules;
 }
@@ -1305,6 +1308,21 @@ Result convert(const Paths &p, const map<string, CompatRule> &compat, const stri
                 break;
             }
         }
+        // the pad mode: the first section (cfg name, folder name, folder name without underscores) that has one
+        string pad;
+        for (const string &name : {fn, lower(l.dir), dirPlain}) {
+            auto it = compat.find(name);
+            if (it != compat.end() && !it->second.pad.empty()) {
+                pad = it->second.pad;
+                break;
+            }
+        }
+        if (pad.empty())
+            pad = "psc";
+        else if (pad != "psc" && pad != "x360" && pad != "psc-kernel" && pad != "x360-kernel") {
+            say("#WARN - " + modName + ": " + title + ": pad mode " + shown(pad, 30) + " is not known, using psc");
+            pad = "psc";
+        }
         if (rule) {
             string reason =
                 rule->reason.empty() ? (rule->block ? "it must not run here" : "not used here") : rule->reason;
@@ -1332,10 +1350,10 @@ Result convert(const Paths &p, const map<string, CompatRule> &compat, const stri
                     shown(have.get("version"), 40) + ", is installed)");
                 continue;
             }
-            if (cmp == 0) {
-                // the same version, installed from another file: nothing to do (and not this package's App)
+            // the same version from another file: nothing to do (and not this package's App); the same file
+            // changed under the same version is made again
+            if (cmp == 0 && have.get("pesource") != modName)
                 continue;
-            }
         }
 
         // links become copies (the stick is FAT)
@@ -1361,7 +1379,8 @@ Result convert(const Paths &p, const map<string, CompatRule> &compat, const stri
         string ini = "Title=" + title + "\nAuthor=" + author + "\nVersion=" + shown(control.version, 60) + "\n";
         if (exists(l.staged + "/" + fn + ".png"))
             ini += "Image=" + fn + ".png\n";
-        ini += "Readme=readme.txt\nStartup=run.sh\nExec.psc=run.sh\nCategory=PE\nPeSource=" + modName + "\n";
+        ini += "Readme=readme.txt\nStartup=run.sh\nExec.psc=run.sh\nCategory=PE\nPeSource=" + modName +
+               "\nPadMode=" + pad + "\n";
         const char *runSh = "#!/bin/sh\n"
                             "# PE App launcher - generated, do not edit\n"
                             "APP_DIR=\"$(cd \"$(dirname \"$0\")\" && pwd)\"\n"
