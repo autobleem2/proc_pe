@@ -372,6 +372,15 @@ int main() {
               contains(readFile(apps7 + "/pe-dpkgapp/readme.txt"), "Built by the real tool."),
           "a package made by dpkg-deb");
 
+    // ---- a description with " Author:" glued to its last line (the packers' Makefile does that)
+    const string apps8 = root + "/Apps8";
+    copyData("glued_1.0.mod", mods2);
+    Run gl = run("--start --mod \"" + mods2 + "/glued_1.0.mod\" --apps \"" + apps8 + "\"");
+    string gluedReadme = readFile(apps8 + "/pe-gluedapp/readme.txt");
+    check(gl.code == 0 && gl.has("#Adding Glued App") && contains(gluedReadme, "Second paragraph.\n") &&
+              !contains(gluedReadme, "Author") && contains(readFile(apps8 + "/pe-gluedapp/app.ini"), "Version=1.0\n"),
+          "a glued ' Author:' is cut from the readme and the rest of the control file still parses");
+
     // ---- nothing to do
     makeDir(root + "/Empty");
     Run none = run("--start --mods \"" + root + "/Empty\" --apps \"" + root + "/Apps6\"");

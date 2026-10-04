@@ -1069,7 +1069,14 @@ string maintainerName(const string &m) {
 string readmeText(const Control &c) {
     string text = shown(c.title, 200) + "\n";
     size_t lines = 0;
-    for (const string &raw : c.description) {
+    for (string raw : c.description) {
+        // the packers' Makefile appends " Author: <name>" straight after a description that has no trailing
+        // newline: the tail is the metadata line that slipped into the text
+        size_t glued = raw.find(" Author:");
+        if (glued != string::npos)
+            raw = trim(raw.substr(0, glued));
+        if (glued != string::npos && raw.empty())
+            continue;
         string l = lower(raw);
         bool meta = false;
         for (const char *k : {"type:", "author:", "platform:", "git commit:", "built:"})

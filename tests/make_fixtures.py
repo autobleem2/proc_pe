@@ -53,16 +53,19 @@ def ar_bytes(members):
     return out
 
 
-def control_text(package, version, description, extra_type="USB_MOD"):
-    return (
+def control_text(package, version, description, extra_type="USB_MOD", glue_author=False):
+    text = (
         "Package: %s\nVersion: %s\nArchitecture: armhf\nMaintainer: ModMyClassic <contact@modmyclassic.com>\n"
         "Installed-Size: 10\nDescription: %s\n Type: %s\n The Project Eris package for %s.\n .\n Second paragraph.\n"
         " Author: Someone\n Platform: SONYPSC armhf\n Git Commit: abc123\n Built: 2020-07-16\n"
     ) % (package, version, description, extra_type, package)
+    if glue_author:
+        text = text.replace(" Second paragraph.\n Author: Someone\n", " Second paragraph. Author: Someone\n")
+    return text
 
 
 def make_mod(path, package, version, launchers, description=None, control_xz=False, extra=(), control_type="USB_MOD",
-             data_members=None):
+             data_members=None, glue_author=False):
     """launchers: {dir: {relpath: bytes | (bytes, mode)}}; extra: more data members."""
     members = [("./", None, 0o755, "d")]
     for d, files in launchers.items():
@@ -73,7 +76,7 @@ def make_mod(path, package, version, launchers, description=None, control_xz=Fal
                 content, mode = content
             members.append((PREFIX + d + "/" + rel, content, mode, "f"))
     members.extend(extra)
-    control = tar_bytes([("./control", control_text(package, version, description or package.title(), control_type).encode(), 0o644, "f")])
+    control = tar_bytes([("./control", control_text(package, version, description or package.title(), control_type, glue_author).encode(), 0o644, "f")])
     if control_xz:
         control_member = ("control.tar.xz", lzma.compress(control, format=lzma.FORMAT_XZ, check=lzma.CHECK_CRC64))
     else:
@@ -174,6 +177,10 @@ def main():
         }
     }
     make_mod("crlf_1.0.mod", "crlfapp", "1.0", crlf, "Crlf")
+
+    # a description with no trailing newline: the Makefile glues " Author:" on to its last line
+    glued = {"gluedapp": {"launcher.cfg": cfg("gluedapp", "Glued App"), "launch.sh": LAUNCH}}
+    make_mod("glued_1.0.mod", "gluedapp", "1.0", glued, "Glued", glue_author=True)
 
     # not a PE package: Type is something else; and a file that is no archive
     make_mod("othertype_1.0.mod", "other", "1.0", normal, "Other type", control_type="OTHER")
