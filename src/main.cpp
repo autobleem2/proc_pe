@@ -77,6 +77,10 @@ const size_t MaxPathLength = 1000;
 const size_t MaxNameLength = 255;
 const size_t MaxMemberInMemory = 8 * 1024 * 1024; // the control archive, in memory
 
+// the pad output of a launcher the list has no pad= for: the console's pad as a real device, which every mod reaches
+// (its own SDL, a static one, or raw evdev); the shim's "psc" is a choice the user makes in the launcher
+const string DefaultPadMode = "psc-kernel";
+
 // the compatibility list, as the launcher ships it (rc/pe_compat.ini); used when no file is found
 const char *BuiltInCompat =
     "[backupinternallaunch]\nblock=1\nreason=deletes the console's own games\n"
@@ -1352,10 +1356,11 @@ Result convert(const Paths &p, const map<string, CompatRule> &compat, const stri
                 analog2dpad = it->second.analog2dpad;
         }
         if (pad.empty())
-            pad = "psc";
+            pad = DefaultPadMode;
         else if (pad != "psc" && pad != "x360" && pad != "psc-kernel" && pad != "x360-kernel") {
-            say("#WARN - " + modName + ": " + title + ": pad mode " + shown(pad, 30) + " is not known, using psc");
-            pad = "psc";
+            say("#WARN - " + modName + ": " + title + ": pad mode " + shown(pad, 30) + " is not known, using " +
+                DefaultPadMode);
+            pad = DefaultPadMode;
         }
         if (rule) {
             string reason =

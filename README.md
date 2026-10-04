@@ -17,7 +17,8 @@ System/Processors/pe/
 ```
 
 It is `Kinds=mods`: the launcher's scan starts it for the `Mods/` folder (`--start --mods`, with `AB_APPS_DIR` for
-the Apps folder). The compatibility list is `rc/pe_compat.ini` of the launcher's package; without it the copy
+the Apps folder). It is `Default=on`: the launcher switches it on the first time it meets it (a player who switches
+it off in Scanner processors keeps it off). The compatibility list is `rc/pe_compat.ini` of the launcher's package; without it the copy
 built into the program is used.
 
 ## What it makes
@@ -38,8 +39,8 @@ that the compatibility list allows, `Apps/pe-<launcher_filename>/` holds:
   Exec.psc=run.sh                      (so only the console lists it)
   Category=PE
   PeSource=<the .mod file name>
-  PadMode=<pad= of the launcher's section in pe_compat.ini: psc, x360, psc-kernel or x360-kernel; psc without it>
-  (an unknown pad value is a #WARN and psc; an unchanged package keeps its App, a changed one gets the current value)
+  PadMode=<pad= of the launcher's section in pe_compat.ini: psc, x360, psc-kernel or x360-kernel; psc-kernel without it>
+  (an unknown pad value is a #WARN and psc-kernel; an unchanged package keeps its App, a changed one gets the current value)
   Dpad2Analog=<dpad2analog= of that section, 1 or 0; no line without it>
   Analog2Dpad=<analog2dpad= of that section, 1 or 0; no line without it>
   ```
