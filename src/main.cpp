@@ -452,7 +452,21 @@ struct CompatRule {
     bool skip = false;
     string reason;
     string pad; // the App's PadMode (a launcher's default pad identity)
+    // the App's Dpad2Analog= / Analog2Dpad= ("1" / "0"; "" = not set): the d-pad also moves the stick / the stick
+    // also presses the d-pad
+    string dpad2analog;
+    string analog2dpad;
 };
+
+// "1" / "0" for a value that says on / off, else ""
+string flagValue(const string &value) {
+    string v = lower(value);
+    if (v == "1" || v == "true" || v == "yes" || v == "on")
+        return "1";
+    if (v == "0" || v == "false" || v == "no" || v == "off")
+        return "0";
+    return "";
+}
 
 // [section] / key=value, section names lower-cased
 map<string, CompatRule> parseCompat(const string &text) {
@@ -479,6 +493,10 @@ map<string, CompatRule> parseCompat(const string &text) {
             current->reason = value;
         else if (key == "pad")
             current->pad = lower(value);
+        else if (key == "dpad2analog")
+            current->dpad2analog = flagValue(value);
+        else if (key == "analog2dpad")
+            current->analog2dpad = flagValue(value);
     }
     return rules;
 }
@@ -1322,6 +1340,17 @@ Result convert(const Paths &p, const map<string, CompatRule> &compat, const stri
                 break;
             }
         }
+        // the d-pad / stick flags the same way, each on its own (none: the launcher's default for the pad output)
+        string dpad2analog, analog2dpad;
+        for (const string &name : {fn, lower(l.dir), dirPlain}) {
+            auto it = compat.find(name);
+            if (it == compat.end())
+                continue;
+            if (dpad2analog.empty())
+                dpad2analog = it->second.dpad2analog;
+            if (analog2dpad.empty())
+                analog2dpad = it->second.analog2dpad;
+        }
         if (pad.empty())
             pad = "psc";
         else if (pad != "psc" && pad != "x360" && pad != "psc-kernel" && pad != "x360-kernel") {
@@ -1386,6 +1415,10 @@ Result convert(const Paths &p, const map<string, CompatRule> &compat, const stri
             ini += "Image=" + fn + ".png\n";
         ini += "Readme=readme.txt\nStartup=run.sh\nExec.psc=run.sh\nCategory=PE\nPeSource=" + modName +
                "\nPadMode=" + pad + "\n";
+        if (!dpad2analog.empty())
+            ini += "Dpad2Analog=" + dpad2analog + "\n";
+        if (!analog2dpad.empty())
+            ini += "Analog2Dpad=" + analog2dpad + "\n";
         const char *runSh = "#!/bin/sh\n"
                             "# PE App launcher - generated, do not edit\n"
                             "APP_DIR=\"$(cd \"$(dirname \"$0\")\" && pwd)\"\n"

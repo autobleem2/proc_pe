@@ -390,6 +390,23 @@ int main() {
               string("PadMode accepts ") + mode);
     }
 
+    // ---- Dpad2Analog / Analog2Dpad: from dpad2analog= / analog2dpad= in the list, each on its own; nothing
+    // written without them (the launcher's default for the pad output) or for a value that is not on/off
+    writeFile(root + "/compat6.ini", "[alpha]\npad=psc\ndpad2analog=0\nanalog2dpad=1\n[beta]\nanalog2dpad=maybe\n");
+    const string apps12 = root + "/Apps12";
+    Run fl = run("--start --mod \"" + mods2 + "/two_1.0.mod\" --apps \"" + apps12 + "\" --compat \"" + root +
+                 "/compat6.ini\"");
+    check(fl.code == 0 && contains(readFile(apps12 + "/pe-alpha/app.ini"), "PadMode=psc\nDpad2Analog=0\nAnalog2Dpad=1\n") &&
+              !contains(readFile(apps12 + "/pe-beta/app.ini"), "Dpad2Analog=") &&
+              !contains(readFile(apps12 + "/pe-beta/app.ini"), "Analog2Dpad="),
+          "Dpad2Analog/Analog2Dpad: the list's values; none for a section without them or with a value not on/off");
+    writeFile(root + "/compat7.ini", "[alpha]\ndpad2analog=yes\n");
+    const string apps13 = root + "/Apps13";
+    run("--start --mod \"" + mods2 + "/two_1.0.mod\" --apps \"" + apps13 + "\" --compat \"" + root + "/compat7.ini\"");
+    check(contains(readFile(apps13 + "/pe-alpha/app.ini"), "Dpad2Analog=1\n") &&
+              !contains(readFile(apps13 + "/pe-alpha/app.ini"), "Analog2Dpad="),
+          "Dpad2Analog alone, spelled yes");
+
     // an unchanged package keeps its App (the list may have changed); a changed one is made again with the
     // current value
     const string apps11 = root + "/Apps11";
