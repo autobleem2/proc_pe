@@ -10,7 +10,7 @@
 // --mod file stays where it is. The launcher's runtime (rc/pe_run.sh) runs the folder's own launch.sh. This
 // program never executes anything from a package.
 //
-//   pe --version                                    "#PE app packages V1.0.0 - <what it does>"
+//   pe --version                                    "#PE app packages V<Version> - <what it does>"
 //   pe --ismine --mod <file>                        exit 0 = mine (a .mod in the ar format), 1 = not mine
 //   pe --start --mods <Mods dir> [--apps <dir>]     every *.mod in the folder
 //   pe --start --mod <file> [--apps <dir>]          one package
@@ -65,7 +65,7 @@ using namespace std;
 
 namespace {
 
-const char *Version = "1.0.0";
+const char *Version = PE_VERSION; // package/processor.ini's Version=, through CMake
 const char *Description = "Turns PE app packages (.mod) into Apps";
 
 // the launcher folders inside a package's data

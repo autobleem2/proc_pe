@@ -84,7 +84,7 @@ folder's name) refuses a launcher with a `#WARN` and the reason; the rest of the
 ## The protocol
 
 ```
-pe --version                                  #PE app packages V1.0.0 - Turns PE app packages (.mod) into Apps
+pe --version                                  #PE app packages V<Version> - Turns PE app packages (.mod) into Apps
 pe --ismine --mod <file>                      exit 0 = a .mod that is an ar archive, 1 = not mine
 pe --start --mods <Mods dir> [--apps <dir>] [--compat <file>]
 pe --start --mod <file> [--apps <dir>] [--compat <file>]

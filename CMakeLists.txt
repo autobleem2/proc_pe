@@ -32,7 +32,13 @@ target_compile_definitions(miniz PUBLIC MINIZ_NO_TIME)
 # the data.tar.xz: libarchive's tar reader and xz filter over the vendored liblzma
 include(third_party/archive.cmake)
 
+# the version lives in one place: package/processor.ini (the program, the self-test and the package all read it)
+file(STRINGS package/processor.ini PE_VERSION_LINE REGEX "^Version=")
+string(REGEX REPLACE "^Version=([^\r\n]*).*" "\\1" PE_VERSION "${PE_VERSION_LINE}")
+set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS package/processor.ini)
+
 add_executable(pe src/main.cpp)
+target_compile_definitions(pe PRIVATE PE_VERSION="${PE_VERSION}")
 target_link_libraries(pe miniz archive)
 if (MINGW OR WIN32)
     # one file to copy onto the stick: no libstdc++/libgcc DLLs next to it
@@ -49,7 +55,8 @@ if (PROC_BUILD_TESTS AND (NOT CMAKE_CROSSCOMPILING OR AB_TARGET STREQUAL "pcusb"
     enable_testing()
     add_executable(pe_selftest tests/selftest.cpp)
     target_compile_definitions(pe_selftest PRIVATE PE_EXE="$<TARGET_FILE:pe>"
-                                                   TEST_DATA="${CMAKE_CURRENT_SOURCE_DIR}/tests/data")
+                                                   TEST_DATA="${CMAKE_CURRENT_SOURCE_DIR}/tests/data"
+                                                   PE_VERSION="${PE_VERSION}")
     add_dependencies(pe_selftest pe)
     add_test(NAME pe_selftest COMMAND pe_selftest WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR})
 endif()

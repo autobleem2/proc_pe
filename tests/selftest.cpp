@@ -208,7 +208,9 @@ int main() {
     writeFile(mods + "/notes.txt", "not a package");
 
     Run v = run("--version");
-    check(v.code == 0 && v.has("#PE app packages V1.0.0 - Turns PE app packages (.mod) into Apps"), "--version");
+    check(v.code == 0 &&
+              v.has(string("#PE app packages V") + PE_VERSION + " - Turns PE app packages (.mod) into Apps"),
+          "--version");
     check(run("--ismine --mod \"" + mods + "/normal_1.0.mod\"").code == 0, "a package: mine");
     check(run("--ismine --mod \"" + mods + "/garbage.mod\"").code == 1, "a .mod that is no archive: not mine");
     check(run("--ismine --mod \"" + mods + "/notes.txt\"").code == 1, "another file: not mine");
@@ -216,7 +218,8 @@ int main() {
     // ---- a normal package
     const string app = apps + "/pe-normalapp";
     Run n = run("--start --mod \"" + mods + "/normal_1.0.mod\" --apps \"" + apps + "\"");
-    check(n.lines.size() > 0 && n.lines[0] == "#Starting - PE app packages V1.0.0", "the first line is #Starting");
+    check(n.lines.size() > 0 && n.lines[0] == string("#Starting - PE app packages V") + PE_VERSION,
+          "the first line is #Starting");
     check(n.code == 0 && n.has("#Converting normal_1.0.mod") && n.has("#Adding Normal App") && n.has("#DONE") &&
               n.has("100"),
           "a package converts: stage, app, percent, #DONE");
