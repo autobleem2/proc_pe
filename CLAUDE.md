@@ -23,6 +23,11 @@ It is the sibling of proc_unzip - same layout, build and CI - and was cloned fro
   `recover()` undoes a killed run). `removeTree()` refuses any path outside `.pe_tmp`.
 - **No-op check without unpacking**: `Apps/.pe_state/<mod>.ini` (Version, Size, the Apps made) plus the control
   file's Version (a few KB of the ar) - `alreadyConverted()`.
+- **`Mods/done/`** (owner, 2026-10-05): `start()` calls `retire()` after each package whose `convert()` is ok and only
+  in `--mods` mode (a `--mod` file stays - the tests reuse their fixtures that way). It replaces `done/<name>` and also
+  deletes the `done/` copy of the package whose App a newer version replaced (`Result::replacedSources`). `listDir`
+  skips folders, so `done/` is never scanned. Nothing in this program removes an App for a missing `.mod`; the
+  launcher and the Store treat "installed" as the .mod in Mods/ or Mods/done/ or the marker.
 - The product's old name must not reach a user: `shown()` cleans every value that goes into app.ini/readme/#WARN
   lines. Code comments may cite the technical path `media/project_eris/...`.
 - **Tests**: `tests/selftest.cpp` (ctest; natively and again for i386 in CI) over `tests/data/*.mod`, made by

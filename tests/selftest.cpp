@@ -313,8 +313,14 @@ int main() {
     for (const char *name : all)
         copyData(name, mods2);
     writeFile(mods2 + "/notes.txt", "not a package");
+    // a converted package leaves its Mods folder, so the run goes over a copy; Mods2 stays the source of the later tests
+    const string modsRun = root + "/ModsRun";
+    makeDir(modsRun);
+    for (const char *name : all)
+        copyData(name, modsRun);
+    writeFile(modsRun + "/notes.txt", "not a package");
     const string apps4 = root + "/Apps4";
-    Run m = run("--start --mods \"" + mods2 + "\" --apps \"" + apps4 + "\"");
+    Run m = run("--start --mods \"" + modsRun + "\" --apps \"" + apps4 + "\"");
     check(m.code == 1 && m.starts("#ERROR - 5 of 9 packages could not be converted"), "the unsafe ones fail the run");
     check(m.has("9/9") || m.has("8/9"), "the packages are counted");
     check(readFile(apps4 + "/pe-alpha/app.ini") ==
@@ -349,10 +355,80 @@ int main() {
     check(m.mentions("garbage.mod: not a PE app package"), "a file that is no archive is refused");
     check(!exists(apps4 + "/.pe_tmp"), "no scratch left after failures");
 
-    // the same run again: the good ones are known, only the failures are tried (and fail) again
-    Run m2 = run("--start --mods \"" + mods2 + "\" --apps \"" + apps4 + "\"");
-    check(m2.code == 1 && m2.starts("#ERROR - 5 of 9") && !m2.mentions("Backup not added") && !m2.mentions("#Adding"),
-          "a second run: converted packages are not unpacked or warned about again");
+    // Mods/done/: the converted packages (even the ones with a refused launcher) moved there, the failures stayed
+    for (const char *name : {"two_1.0.mod", "blocked_1.0.mod", "hybrid_1.0.mod", "crlf_1.0.mod"})
+        check(exists(modsRun + "/done/" + name) && !exists(modsRun + "/" + name),
+              string(name) + ": converted, moved to Mods/done/");
+    for (const char *name : {"traversal_1.0.mod", "symlink_1.0.mod", "absolute_1.0.mod", "othertype_1.0.mod",
+                             "garbage.mod"})
+        check(exists(modsRun + "/" + name) && !exists(modsRun + "/done/" + name),
+              string(name) + ": failed, stays in Mods");
+    check(readFile(modsRun + "/done/two_1.0.mod") == readFile(string(TEST_DATA) + "/two_1.0.mod"),
+          "the moved package is the original, byte for byte");
+    check(exists(modsRun + "/notes.txt"), "a file that is no .mod is left alone");
+
+    // the same run again: the good ones are in done/ (never scanned), only the failures are tried (and fail) again
+    Run m2 = run("--start --mods \"" + modsRun + "\" --apps \"" + apps4 + "\"");
+    check(m2.code == 1 && m2.starts("#ERROR - 5 of 5") && !m2.mentions("Backup not added") && !m2.mentions("#Adding") &&
+              !m2.mentions("two_1.0.mod") && exists(apps4 + "/pe-alpha/app.ini"),
+          "a second run: done/ is not scanned, the Apps stay");
+
+    // moving a package to done/ never removes its App, and the App needs neither the .mod nor the marker's file
+    const string apps14 = root + "/Apps14";
+    const string mods14 = root + "/Mods14";
+    makeDir(mods14);
+    copyData("normal_1.0.mod", mods14);
+    Run d1 = run("--start --mods \"" + mods14 + "\" --apps \"" + apps14 + "\"");
+    check(d1.code == 0 && d1.has("#Adding Normal App") && exists(apps14 + "/pe-normalapp/app.ini") &&
+              exists(apps14 + "/.pe_state/normal_1.0.mod.ini") && exists(mods14 + "/done/normal_1.0.mod") &&
+              !exists(mods14 + "/normal_1.0.mod"),
+          "success: the App, its marker, and the .mod in Mods/done/");
+    Run d2 = run("--start --mods \"" + mods14 + "\" --apps \"" + apps14 + "\"");
+    check(d2.code == 0 && d2.lines.size() == 2 && exists(apps14 + "/pe-normalapp/app.ini") &&
+              exists(mods14 + "/done/normal_1.0.mod"),
+          "with the .mod gone from Mods the run changes nothing and removes no App");
+
+    // the same name dropped again: converted again (no work, the marker knows it), and the copy in done/ replaced
+    writeFile(mods14 + "/done/normal_1.0.mod", "an old stale copy");
+    copyData("normal_1.0.mod", mods14);
+    Run d3 = run("--start --mods \"" + mods14 + "\" --apps \"" + apps14 + "\"");
+    check(d3.code == 0 && !exists(mods14 + "/normal_1.0.mod") &&
+              readFile(mods14 + "/done/normal_1.0.mod") == readFile(string(TEST_DATA) + "/normal_1.0.mod") &&
+              exists(apps14 + "/pe-normalapp/app.ini"),
+          "the same name dropped again: moved to done/ again, the older copy there replaced");
+
+    // a newer version dropped: the App is replaced, the old version's .mod in done/ is retired, the new one lands
+    copyData("normal_1.1.mod", mods14);
+    Run d4 = run("--start --mods \"" + mods14 + "\" --apps \"" + apps14 + "\"");
+    check(d4.code == 0 && d4.has("#Adding Normal App") &&
+              contains(readFile(apps14 + "/pe-normalapp/app.ini"), "PeSource=normal_1.1.mod\n") &&
+              exists(mods14 + "/done/normal_1.1.mod") && !exists(mods14 + "/done/normal_1.0.mod") &&
+              !exists(mods14 + "/normal_1.1.mod"),
+          "a newer version: the App replaced, the old .mod retired from done/, the new one moved in");
+
+    // an older version dropped later: not installed (a #WARN), still not an error and its App untouched
+    copyData("normal_0.9.mod", mods14);
+    Run d5 = run("--start --mods \"" + mods14 + "\" --apps \"" + apps14 + "\"");
+    check(d5.code == 0 && d5.mentions("a newer version, 1.1, is installed") &&
+              contains(readFile(apps14 + "/pe-normalapp/app.ini"), "Version=1.1\n") &&
+              exists(apps14 + "/pe-normalapp/app.ini"),
+          "an older version dropped later: the newer App stays");
+
+    // a read-only Mods/done (a file in the way of the folder): the move fails with a #WARN, the App stands
+    const string apps15 = root + "/Apps15";
+    const string mods15 = root + "/Mods15";
+    makeDir(mods15);
+    copyData("normal_1.0.mod", mods15);
+    writeFile(mods15 + "/done", "a file, not a folder");
+    Run d6 = run("--start --mods \"" + mods15 + "\" --apps \"" + apps15 + "\"");
+    check(d6.code == 0 && d6.mentions("normal_1.0.mod: could not create") && exists(mods15 + "/normal_1.0.mod") &&
+              exists(apps15 + "/pe-normalapp/app.ini"),
+          "a move that cannot be done: a #WARN, the .mod stays in Mods, the App is complete");
+
+    // a single package (--mod) stays where it is
+    const string apps16 = root + "/Apps16";
+    Run one = run("--start --mod \"" + mods + "/normal_1.0.mod\" --apps \"" + apps16 + "\"");
+    check(one.code == 0 && exists(mods + "/normal_1.0.mod") && !exists(mods + "/done"), "--mod: the file stays");
 
     // ---- a list of its own
     writeFile(root + "/compat.ini", "[alpha]\nskip=1\nreason=test reason\n");

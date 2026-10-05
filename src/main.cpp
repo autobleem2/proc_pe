@@ -5,8 +5,10 @@
 // media/project_eris/etc/project_eris/SUP/launchers/<dir>/ with a launcher.cfg and a launch.sh. Each folder
 // that the compatibility list allows becomes one App, Apps/pe-<launcher_filename>/: the folder byte for byte
 // as the package has it, plus three generated files - app.ini, readme.txt and run.sh (the contract in the
-// README). The package itself stays where it is; the launcher's runtime (rc/pe_run.sh) runs the folder's
-// own launch.sh. This program never executes anything from a package.
+// README). A package converted from a Mods folder (--mods) moves to Mods/done/ afterwards (replacing a copy
+// there; never deleted; done/ is never scanned; a failed package stays in Mods and is tried again); a single
+// --mod file stays where it is. The launcher's runtime (rc/pe_run.sh) runs the folder's own launch.sh. This
+// program never executes anything from a package.
 //
 //   pe --version                                    "#PE app packages V1.0.0 - <what it does>"
 //   pe --ismine --mod <file>                        exit 0 = mine (a .mod in the ar format), 1 = not mine
@@ -1130,6 +1132,7 @@ struct Result {
     bool ok = false;
     string why;
     vector<string> apps; // the folders (pe-...) this package's Apps are in
+    vector<string> replacedSources; // the other packages whose App this one replaced (their .mod is retired)
 };
 
 // Converts the package at `modPath`. A launcher folder that is refused (listed, hybrid, installed already) is a
@@ -1393,6 +1396,8 @@ Result convert(const Paths &p, const map<string, CompatRule> &compat, const stri
             // changed under the same version is made again
             if (cmp == 0 && have.get("pesource") != modName)
                 continue;
+            if (have.get("pesource") != modName)
+                result.replacedSources.push_back(have.get("pesource"));
         }
 
         // links become copies (the stick is FAT)
@@ -1454,7 +1459,31 @@ Result convert(const Paths &p, const map<string, CompatRule> &compat, const stri
 //******************
 // --start
 //******************
-int start(const vector<string> &mods, const Paths &paths, const map<string, CompatRule> &compat) {
+// A converted package leaves the Mods folder for Mods/done/ (not deleted: the user can take the original back).
+// A copy already in done/ (the same name dropped again, or an older version) is replaced. A failure to move is a
+// #WARN only: the App is complete and its marker written, so the next run finds the package converted and tries
+// the move again.
+void retire(const string &doneDir, const string &modPath, const Result &r) {
+    const string name = fileName(modPath);
+    if (!makeDirs(doneDir)) {
+        say("#WARN - " + name + ": could not create " + doneDir + " - the package stays in Mods");
+        return;
+    }
+    const string to = doneDir + "/" + name;
+    removeFile(to);
+    if (!renameFile(modPath, to)) {
+        say("#WARN - " + name + ": could not move it to " + fileName(doneDir) + " - it stays in Mods");
+        return;
+    }
+    for (const string &old : r.replacedSources) {
+        if (old != name && endsWith(old, ".mod") && old.find_first_of("/\\") == string::npos)
+            removeFile(doneDir + "/" + old);
+    }
+}
+
+// `doneDir` is empty for a single package (--mod): that file stays where it is.
+int start(const vector<string> &mods, const Paths &paths, const map<string, CompatRule> &compat,
+          const string &doneDir) {
     if (!makeDirs(paths.apps)) {
         say("#ERROR - could not create " + paths.apps);
         return 1;
@@ -1471,6 +1500,8 @@ int start(const vector<string> &mods, const Paths &paths, const map<string, Comp
             if (firstReason.empty())
                 firstReason = fileName(mods[i]) + ": " + r.why;
             say("#WARN - " + fileName(mods[i]) + ": " + r.why);
+        } else if (!doneDir.empty()) {
+            retire(doneDir, mods[i], r);
         }
     }
     removeTree(paths.tmp);
@@ -1535,8 +1566,10 @@ int main(int argc, char **argv) {
         if (appsDir.empty() && getenv("AB_APPS_DIR"))
             appsDir = withoutSlash(getenv("AB_APPS_DIR"));
         vector<string> mods;
+        string doneDir;
         if (has("--mods")) {
             string dir = value("--mods");
+            doneDir = dir + "/done";
             if (appsDir.empty())
                 appsDir = (dirName(dir) == "." && dir.find('/') == string::npos ? "." : dirName(dir)) + "/Apps";
             for (const Entry &e : listDir(dir)) {
@@ -1557,7 +1590,7 @@ int main(int argc, char **argv) {
             say("#DONE");
             return 0;
         }
-        return start(mods, pathsFor(appsDir), loadCompat(value("--compat")));
+        return start(mods, pathsFor(appsDir), loadCompat(value("--compat")), doneDir);
     }
     return usage();
 }

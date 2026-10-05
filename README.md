@@ -5,7 +5,8 @@ An AutoBleem **scanner processor** that turns PE app packages (`.mod` files) int
 as an App (`Apps/pe-<name>/`, category "PE"). It is modelled on [proc_unzip](https://github.com/autobleem2/proc_unzip):
 one C++ file, [`src/main.cpp`](src/main.cpp), nothing but the standard library and the vendored decoders
 ([libarchive](third_party/libarchive) with [liblzma](third_party/xz) for the tar.xz data, [miniz](third_party/miniz)
-for a gzip'd control file). The `.mod` stays in `Mods/`; the package is never executed by this program.
+for a gzip'd control file). Once a package is converted the `.mod` moves to `Mods/done/` (see "The rules it keeps");
+the package is never executed by this program.
 
 ## Installing
 
@@ -61,6 +62,15 @@ folder's name) refuses a launcher with a `#WARN` and the reason; the rest of the
   put back.
 - **idempotent**: a package already converted (its marker in `Apps/.pe_state/`, same size and Version, its Apps
   there with the same `PeSource` and `Version`) is not even unpacked.
+- **the `.mod` moves to `Mods/done/`** after a successful conversion (`--start --mods` only; a single `--mod` file
+  stays where it is), so the files are not on the stick twice in plain sight - and it is not deleted, the user can take
+  the original back. Success means the package was read to the end and its marker in `Apps/.pe_state/` is written
+  (a launcher the list refuses is a `#WARN`, not a failure). A package that fails stays in `Mods/` and is tried again
+  at every scan. `Mods/done/` is never scanned. A `.mod` dropped into `Mods/` again - the same name or a newer
+  version - is converted again and replaces the copy in `done/`; a newer version under another file name also
+  removes the old version's `.mod` from `done/`. The move never removes an App: this program never removes an App
+  for a missing `.mod` (the marker, not the file, says what is converted). A move that fails (`Mods/done` is a file,
+  the stick is read-only) is a `#WARN`; the App is complete and the `.mod` stays in `Mods/`.
 - **never overwrites what is not its own**: an `Apps/pe-*` folder without `PeSource` stays; the same or an older
   Version than the installed one changes nothing (an older one warns); a **newer Version replaces the folder and
   keeps every file of the old folder that the new package does not ship**, at any depth (saves, game data - and
