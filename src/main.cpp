@@ -772,6 +772,7 @@ struct Control {
     string version;
     string maintainer;
     string type;
+    string category;            // the package type ("Category: games"), as the packer wrote it: see packageCategory()
     string title;               // the first line of Description
     vector<string> description; // the lines after it (continuation lines, ' .' as an empty line)
 };
@@ -789,6 +790,8 @@ Control parseControl(const string &text) {
                 // "Type: USB_MOD" is a continuation line of the Description
                 if (startsWith(lower(body), "type:"))
                     c.type = trim(body.substr(5));
+                if (startsWith(lower(body), "category:"))
+                    c.category = trim(body.substr(9));
             }
             continue;
         }
@@ -803,6 +806,8 @@ Control parseControl(const string &text) {
             c.maintainer = value;
         else if (key == "type")
             c.type = value;
+        else if (key == "category")
+            c.category = value;
         else if (key == "description")
             c.title = value;
     }
@@ -1098,6 +1103,17 @@ string maintainerName(const string &m) {
     return trim(lt == string::npos ? m : m.substr(0, lt));
 }
 
+// The package type the control file names, lower case, when it is one of the launcher's App categories: the App
+// goes to that category and its title says it is a mod. Anything else (none, "pe", a word we do not know) is an
+// untyped package: it stays in "PE apps".
+string packageCategory(const Control &c) {
+    string value = lower(trim(c.category));
+    for (const char *known : {"games", "emulators", "tools", "media", "other"})
+        if (value == known)
+            return value;
+    return "";
+}
+
 string readmeText(const Control &c) {
     string text = shown(c.title, 200) + "\n";
     size_t lines = 0;
@@ -1111,7 +1127,7 @@ string readmeText(const Control &c) {
             continue;
         string l = lower(raw);
         bool meta = false;
-        for (const char *k : {"type:", "author:", "platform:", "git commit:", "built:"})
+        for (const char *k : {"type:", "category:", "author:", "platform:", "git commit:", "built:"})
             meta = meta || startsWith(l, k);
         if (meta)
             continue;
@@ -1420,10 +1436,13 @@ Result convert(const Paths &p, const map<string, CompatRule> &compat, const stri
         string author = shown(cfgValue(cfg, "launcher_publisher"), 120);
         if (author.empty())
             author = shown(maintainerName(control.maintainer), 120);
-        string ini = "Title=" + title + "\nAuthor=" + author + "\nVersion=" + shown(control.version, 60) + "\n";
+        const string category = packageCategory(control);
+        const string appTitle = category.empty() ? title : title + " (mod)";
+        string ini = "Title=" + appTitle + "\nAuthor=" + author + "\nVersion=" + shown(control.version, 60) + "\n";
         if (exists(l.staged + "/" + fn + ".png"))
             ini += "Image=" + fn + ".png\n";
-        ini += "Readme=readme.txt\nStartup=run.sh\nExec.psc=run.sh\nCategory=PE\nPeSource=" + modName +
+        ini += "Readme=readme.txt\nStartup=run.sh\nExec.psc=run.sh\nCategory=" +
+               (category.empty() ? string("PE") : category) + "\nPeSource=" + modName +
                "\nPadMode=" + pad + "\n";
         if (!dpad2analog.empty())
             ini += "Dpad2Analog=" + dpad2analog + "\n";
@@ -1440,7 +1459,7 @@ Result convert(const Paths &p, const map<string, CompatRule> &compat, const stri
             return fail("could not write the files of " + title + " - the stick may be full");
         setMode(l.staged + "/run.sh", 0755);
 
-        say("#Adding " + title);
+        say("#Adding " + appTitle);
         if (!installFolder(p, l.staged, name))
             return fail("could not put " + title + " in Apps");
         result.apps.push_back(name);

@@ -307,6 +307,28 @@ int main() {
     check(rec.code == 0 && readFile(apps3 + "/pe-lost/save.dat") == "kept" && !exists(apps3 + "/.pe_tmp"),
           "a folder moved aside by a killed run is put back; the scratch is cleared");
 
+    // ---- package types: a control file that names a category files the App there, as "<title> (mod)"
+    const string modsT = root + "/ModsTyped";
+    const string appsT = root + "/AppsTyped";
+    makeDir(modsT);
+    for (const char *name : {"typed_1.0.mod", "typedtop_1.0.mod", "oddtype_1.0.mod"})
+        copyData(name, modsT);
+    Run ty = run("--start --mods \"" + modsT + "\" --apps \"" + appsT + "\"");
+    check(ty.code == 0 && ty.has("#Adding Typed App (mod)") && ty.has("#Adding Tool App (mod)") &&
+              ty.has("#Adding Odd App") && !ty.has("#Adding Odd App (mod)"),
+          "a typed package is announced as a mod, an untyped one is not");
+    check(readFile(appsT + "/pe-typedapp/app.ini") ==
+              "Title=Typed App (mod)\nAuthor=An Author\nVersion=1.0\nReadme=readme.txt\nStartup=run.sh\n"
+              "Exec.psc=run.sh\nCategory=games\nPeSource=typed_1.0.mod\nPadMode=psc-kernel\n",
+          "a Description line \"Category: Games\": Category=games and the (mod) title");
+    check(contains(readFile(appsT + "/pe-toolapp/app.ini"), "Title=Tool App (mod)\n") &&
+              contains(readFile(appsT + "/pe-toolapp/app.ini"), "Category=tools\n"),
+          "a field of its own \"Category: tools\" works the same");
+    check(contains(readFile(appsT + "/pe-oddapp/app.ini"), "Title=Odd App\n") &&
+              contains(readFile(appsT + "/pe-oddapp/app.ini"), "Category=PE\n"),
+          "a word that is no category: the App stays in PE apps, no suffix");
+    check(!contains(readFile(appsT + "/pe-typedapp/readme.txt"), "Category"), "the category line is not in the readme");
+
     // ---- a Mods folder: two launchers, a blocked one, a hybrid, CRLF, and everything unsafe
     const string mods2 = root + "/Mods2";
     makeDir(mods2);

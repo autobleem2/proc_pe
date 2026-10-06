@@ -53,7 +53,7 @@ def ar_bytes(members):
     return out
 
 
-def control_text(package, version, description, extra_type="USB_MOD", glue_author=False):
+def control_text(package, version, description, extra_type="USB_MOD", glue_author=False, category=None):
     text = (
         "Package: %s\nVersion: %s\nArchitecture: armhf\nMaintainer: ModMyClassic <contact@modmyclassic.com>\n"
         "Installed-Size: 10\nDescription: %s\n Type: %s\n The Project Eris package for %s.\n .\n Second paragraph.\n"
@@ -61,11 +61,18 @@ def control_text(package, version, description, extra_type="USB_MOD", glue_autho
     ) % (package, version, description, extra_type, package)
     if glue_author:
         text = text.replace(" Second paragraph.\n Author: Someone\n", " Second paragraph. Author: Someone\n")
+    if category:
+        # a package type, the way pe_ports' mkmod.py writes it: a metadata line of the Description ("Category: x"),
+        # or - with a leading "!" - a field of its own
+        if category.startswith("!"):
+            text = text.replace("Installed-Size: 10\n", "Installed-Size: 10\nCategory: %s\n" % category[1:])
+        else:
+            text = text.replace(" Type: %s\n" % extra_type, " Type: %s\n Category: %s\n" % (extra_type, category))
     return text
 
 
 def make_mod(path, package, version, launchers, description=None, control_xz=False, extra=(), control_type="USB_MOD",
-             data_members=None, glue_author=False):
+             data_members=None, glue_author=False, category=None):
     """launchers: {dir: {relpath: bytes | (bytes, mode)}}; extra: more data members."""
     members = [("./", None, 0o755, "d")]
     for d, files in launchers.items():
@@ -76,7 +83,7 @@ def make_mod(path, package, version, launchers, description=None, control_xz=Fal
                 content, mode = content
             members.append((PREFIX + d + "/" + rel, content, mode, "f"))
     members.extend(extra)
-    control = tar_bytes([("./control", control_text(package, version, description or package.title(), control_type, glue_author).encode(), 0o644, "f")])
+    control = tar_bytes([("./control", control_text(package, version, description or package.title(), control_type, glue_author, category).encode(), 0o644, "f")])
     if control_xz:
         control_member = ("control.tar.xz", lzma.compress(control, format=lzma.FORMAT_XZ, check=lzma.CHECK_CRC64))
     else:
@@ -136,6 +143,15 @@ def main():
     }
     make_mod("normal_1.1.mod", "normalapp", "1.1", normal2, "A normal app")
     make_mod("normal_0.9.mod", "normalapp", "0.9", normal, "A normal app")
+
+    # package types: the control file's "Category" (a Description line, or a field of its own) files the App in
+    # that category as "<title> (mod)"; a word that is no category ("pe") is an untyped package
+    typed = {"typedapp": {"launcher.cfg": cfg("typedapp", "Typed App", "An Author"), "launch.sh": LAUNCH}}
+    make_mod("typed_1.0.mod", "typedapp", "1.0", typed, "A typed app", category="Games")
+    typed_top = {"toolapp": {"launcher.cfg": cfg("toolapp", "Tool App"), "launch.sh": LAUNCH}}
+    make_mod("typedtop_1.0.mod", "toolapp", "1.0", typed_top, "A tool", category="!tools")
+    untyped_word = {"oddapp": {"launcher.cfg": cfg("oddapp", "Odd App"), "launch.sh": LAUNCH}}
+    make_mod("oddtype_1.0.mod", "oddapp", "1.0", untyped_word, "An odd one", category="pe")
 
     # two launchers in one package, an xz control archive
     two = {

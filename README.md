@@ -38,13 +38,19 @@ that the compatibility list allows, `Apps/pe-<launcher_filename>/` holds:
   Readme=readme.txt
   Startup=run.sh
   Exec.psc=run.sh                      (so only the console lists it)
-  Category=PE
+  Category=PE                          (or the package type, see below)
   PeSource=<the .mod file name>
   PadMode=<pad= of the launcher's section in pe_compat.ini: psc, x360, psc-kernel or x360-kernel; psc-kernel without it>
   (an unknown pad value is a #WARN and psc-kernel; an unchanged package keeps its App, a changed one gets the current value)
   Dpad2Analog=<dpad2analog= of that section, 1 or 0; no line without it>
   Analog2Dpad=<analog2dpad= of that section, 1 or 0; no line without it>
   ```
+- **A package type**: a control file that names one of the launcher's App categories - a metadata line of the
+  Description (` Category: games`, as `pe_ports` writes it) or a field of its own (`Category: games`); games, emulators,
+  tools, media or other, any case - files the App there: `Category=<type>` and the title gets the suffix ` (mod)`
+  (`Title=OpenLara (mod)`). A package with no type (a user's own `.mod`), or a word that is no category, stays in the
+  launcher's "PE apps" category (`Category=PE`) with its title as it is. The App is typed when it is made: a package
+  already converted at the same version is not touched, so a newly typed package needs a new version.
 - `readme.txt`: the control Description (its free-text lines, not its metadata), "Put the files this program needs
   (game data) in this folder.", and a one-line compatibility note - never the package's own README;
 - `run.sh` (executable): `exec sh "${AB_RC_DIR:-/media/Autobleem/rc}/pe_run.sh" "$APP_DIR"`.
