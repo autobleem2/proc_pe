@@ -61,6 +61,26 @@ product's old name in any shown text is written as "PE".
 The compatibility list (`[section]`, `block=1` or `skip=1`, `reason=`; a section is a `launcher_filename`, or the
 folder's name) refuses a launcher with a `#WARN` and the reason; the rest of the package is still converted.
 
+## Game data and engines (the packages spec, APPS-12)
+
+- A launcher folder whose `launcher.cfg` says `launcher_package="1"` is **game data**: it needs no `launch.sh` and
+  makes no App. It is unpacked into `Packages/pe-<launcher_filename>/` (`--packages`, else `$AB_PACKAGES_DIR`, else
+  `Packages/` next to Apps/; made only when there is a package to put in it) with the game's files unchanged, minus
+  `launcher.cfg` and `launch.sh`. The folder carries the descriptor `package.ini` (spec 2.2: `Title`, `Kind`,
+  `Game<N>.Title`/`.File`, ...); proc_pe checks it (a Title, a content kind for every game, at least one game whose
+  file is in the folder, no path outside it - `#WARN - ... not added (<why>)` and nothing added otherwise) and stamps
+  `Version=<control Version>`, `Source=mod` and `PeSource=<the .mod>` (the mod's own values of these are replaced), plus
+  `Image=<launcher_filename>.png` when the descriptor names none.
+- The same rules as for an App: a folder without `PeSource` stays, the same or an older Version changes nothing, a newer
+  Version replaces the package **whole** (a package keeps nothing of the old one), a marker in `Apps/.pe_state/`
+  (`Packages=`) makes a second run a no-op.
+- **An App an older proc_pe made from the same mod is removed** once the package is in place: `Apps/pe-<launcher_filename>`
+  whose app.ini `PeSource=` names a `.mod` of the same package (`freedoomdata-0.13.0-1.mod` for `-2.mod`: the name up to
+  the first `-` and a digit), together with that old `.mod`'s marker. Any other App stays.
+- An engine's `launcher_uses="doom-iwad;heretic-iwad"` becomes `Uses=doom-iwad; heretic-iwad` and
+  `launcher_package_dir="WAD;MODS"` becomes `PackageDir=WAD; MODS` in app.ini. A value that does not fit (a kind is
+  `[a-z0-9]` with single `-`; a folder is relative, inside the App) is dropped with a `#WARN`; the App is still made.
+
 ## The rules it keeps
 
 - **atomic**: everything is unpacked into `Apps/.pe_tmp/` (same filesystem) and a folder is renamed into `Apps/`
@@ -92,8 +112,8 @@ folder's name) refuses a launcher with a `#WARN` and the reason; the rest of the
 ```
 pe --version                                  #PE app packages V<Version> - Turns PE app packages (.mod) into Apps
 pe --ismine --mod <file>                      exit 0 = a .mod that is an ar archive, 1 = not mine
-pe --start --mods <Mods dir> [--apps <dir>] [--compat <file>]
-pe --start --mod <file> [--apps <dir>] [--compat <file>]
+pe --start --mods <Mods dir> [--apps <dir>] [--packages <dir>] [--compat <file>]
+pe --start --mod <file> [--apps <dir>] [--packages <dir>] [--compat <file>]
 ```
 
 The Apps folder is `--apps`, else `$AB_APPS_DIR`, else `Apps/` next to the Mods folder. The list is `--compat`,

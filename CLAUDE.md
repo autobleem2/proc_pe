@@ -28,6 +28,13 @@ It is the sibling of proc_unzip - same layout, build and CI - and was cloned fro
   deletes the `done/` copy of the package whose App a newer version replaced (`Result::replacedSources`). `listDir`
   skips folders, so `done/` is never scanned. Nothing in this program removes an App for a missing `.mod`; the
   launcher and the Store treat "installed" as the .mod in Mods/ or Mods/done/ or the marker.
+- **Game data = a package, not an App** (the owner, 2026-10-06; the packages spec, APPS-12): `launcher_package="1"` in
+  launcher.cfg + a `package.ini` in the folder -> `Packages/pe-<name>/` (`convert()`'s `isData` branch: `checkPackageIni()`,
+  `stampPackageIni()`, `installFolder(..., asPackage)` - a package is replaced whole, its aside folder in `.pe_tmp` is
+  `Packages~<name>.old` so `recover()` can tell it from an App's). `removeOldApp()` removes the App an older version of
+  the same mod made (PeSource names a mod with the same `modStem()`), never another. `launcher_uses` /
+  `launcher_package_dir` -> app.ini `Uses=` / `PackageDir=`. Tests: the `gamedata-*`, `linkdata`, `nodesc`, `nofile`,
+  `badkind`, `escape`, `engine`, `badengine` fixtures.
 - The product's old name must not reach a user: `shown()` cleans every value that goes into app.ini/readme/#WARN
   lines. Code comments may cite the technical path `media/project_eris/...`.
 - **Tests**: `tests/selftest.cpp` (ctest; natively and again for i386 in CI) over `tests/data/*.mod`, made by

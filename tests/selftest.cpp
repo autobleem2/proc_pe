@@ -208,8 +208,7 @@ int main() {
     writeFile(mods + "/notes.txt", "not a package");
 
     Run v = run("--version");
-    check(v.code == 0 &&
-              v.has(string("#PE app packages V") + PE_VERSION + " - Turns PE app packages (.mod) into Apps"),
+    check(v.code == 0 && v.has(string("#PE app packages V") + PE_VERSION + " - Turns PE app packages (.mod) into Apps"),
           "--version");
     check(run("--ismine --mod \"" + mods + "/normal_1.0.mod\"").code == 0, "a package: mine");
     check(run("--ismine --mod \"" + mods + "/garbage.mod\"").code == 1, "a .mod that is no archive: not mine");
@@ -338,7 +337,8 @@ int main() {
     for (const char *name : all)
         copyData(name, mods2);
     writeFile(mods2 + "/notes.txt", "not a package");
-    // a converted package leaves its Mods folder, so the run goes over a copy; Mods2 stays the source of the later tests
+    // a converted package leaves its Mods folder, so the run goes over a copy; Mods2 stays the source of the later
+    // tests
     const string modsRun = root + "/ModsRun";
     makeDir(modsRun);
     for (const char *name : all)
@@ -384,8 +384,8 @@ int main() {
     for (const char *name : {"two_1.0.mod", "blocked_1.0.mod", "hybrid_1.0.mod", "crlf_1.0.mod"})
         check(exists(modsRun + "/done/" + name) && !exists(modsRun + "/" + name),
               string(name) + ": converted, moved to Mods/done/");
-    for (const char *name : {"traversal_1.0.mod", "symlink_1.0.mod", "absolute_1.0.mod", "othertype_1.0.mod",
-                             "garbage.mod"})
+    for (const char *name :
+         {"traversal_1.0.mod", "symlink_1.0.mod", "absolute_1.0.mod", "othertype_1.0.mod", "garbage.mod"})
         check(exists(modsRun + "/" + name) && !exists(modsRun + "/done/" + name),
               string(name) + ": failed, stays in Mods");
     check(readFile(modsRun + "/done/two_1.0.mod") == readFile(string(TEST_DATA) + "/two_1.0.mod"),
@@ -497,7 +497,8 @@ int main() {
     const string apps12 = root + "/Apps12";
     Run fl = run("--start --mod \"" + mods2 + "/two_1.0.mod\" --apps \"" + apps12 + "\" --compat \"" + root +
                  "/compat6.ini\"");
-    check(fl.code == 0 && contains(readFile(apps12 + "/pe-alpha/app.ini"), "PadMode=psc\nDpad2Analog=0\nAnalog2Dpad=1\n") &&
+    check(fl.code == 0 &&
+              contains(readFile(apps12 + "/pe-alpha/app.ini"), "PadMode=psc\nDpad2Analog=0\nAnalog2Dpad=1\n") &&
               !contains(readFile(apps12 + "/pe-beta/app.ini"), "Dpad2Analog=") &&
               !contains(readFile(apps12 + "/pe-beta/app.ini"), "Analog2Dpad="),
           "Dpad2Analog/Analog2Dpad: the list's values; none for a section without them or with a value not on/off");
@@ -548,6 +549,157 @@ int main() {
     check(gl.code == 0 && gl.has("#Adding Glued App") && contains(gluedReadme, "Second paragraph.\n") &&
               !contains(gluedReadme, "Author") && contains(readFile(apps8 + "/pe-gluedapp/app.ini"), "Version=1.0\n"),
           "a glued ' Author:' is cut from the readme and the rest of the control file still parses");
+
+    // ---- game data (launcher_package="1"): a package of Packages/, never an App
+    {
+        const string modsG = root + "/ModsG", appsG = root + "/AppsG", pkgG = root + "/PackagesG";
+        const string args = " --apps \"" + appsG + "\" --packages \"" + pkgG + "\"";
+        makeDir(modsG);
+        // an older proc_pe made an App of the old kind of this mod (no mark, a launch.sh)
+        copyData("gamedata-1.0-1.mod", modsG);
+        Run g1 = run("--start --mods \"" + modsG + "\"" + args);
+        check(g1.code == 0 && g1.has("#Adding Game Data") && exists(appsG + "/pe-gamedata/app.ini") &&
+                  contains(readFile(appsG + "/pe-gamedata/app.ini"), "PeSource=gamedata-1.0-1.mod\n") && !exists(pkgG),
+              "an unmarked mod stays an App, and Packages/ is not even made");
+
+        // a foreign App of the same name stays when the data package comes (no PeSource / another mod's source)
+        const string appsF = root + "/AppsGF", pkgF = root + "/PackagesGF";
+        makeDir(appsF);
+        makeDir(appsF + "/pe-gamedata");
+        writeFile(appsF + "/pe-gamedata/app.ini", "Title=Mine\n");
+        Run f1 = run("--start --mod \"" + string(TEST_DATA) + "/gamedata-1.0-2.mod\" --apps \"" + appsF +
+                     "\" --packages \"" + pkgF + "\"");
+        check(f1.code == 0 && exists(pkgF + "/pe-gamedata/package.ini") &&
+                  readFile(appsF + "/pe-gamedata/app.ini") == "Title=Mine\n",
+              "an App with no PeSource is not removed by the data package");
+        writeFile(appsF + "/pe-gamedata/app.ini", "Title=Other\nPeSource=other-1.0-1.mod\n");
+        removeTree(pkgF);
+        run("--start --mod \"" + string(TEST_DATA) + "/gamedata-1.0-2.mod\" --apps \"" + appsF + "\" --packages \"" +
+            pkgF + "\"");
+        check(exists(pkgF + "/pe-gamedata/package.ini") &&
+                  readFile(appsF + "/pe-gamedata/app.ini") == "Title=Other\nPeSource=other-1.0-1.mod\n",
+              "an App made from another mod is not removed either");
+
+        // the data mod: the package is in Packages/, the old App is gone with the old mod's marker
+        copyData("gamedata-1.0-2.mod", modsG);
+        Run g2 = run("--start --mods \"" + modsG + "\"" + args);
+        const string pk = pkgG + "/pe-gamedata";
+        check(g2.code == 0 && g2.has("#Adding Game Data") && g2.has("#DONE") && !g2.starts("#WARN"),
+              "a data mod converts");
+        check(readFile(pk + "/package.ini") ==
+                  "[package]\nTitle=Game Data\nKind=doom-iwad\nLicence=BSD-3-Clause\nAuthor=A Maker\n"
+                  "Game1.Id=first\nGame1.Title=First Game\nGame1.File=a.wad\n"
+                  "Game2.Id=second\nGame2.Title=Second Game\nGame2.File=Sub/B.WAD\n"
+                  "Image=gamedata.png\nVersion=1.0-2\nSource=mod\nPeSource=gamedata-1.0-2.mod\n",
+              "package.ini: the mod's descriptor, its own Source/PeSource/Version replaced by the stamps, Image added");
+        check(readFile(pk + "/a.wad") == binData(3000, 11) && readFile(pk + "/Sub/b.wad") == binData(2000, 12) &&
+                  exists(pk + "/gamedata.png") && readFile(pk + "/licences/COPYING.txt") == "licence\n" &&
+                  readFile(pk + "/SOURCE.txt") == "source\n",
+              "the game's files are the mod's, byte for byte, with their folders");
+        check(!exists(pk + "/launcher.cfg") && !exists(pk + "/launch.sh") && !exists(pk + "/app.ini") &&
+                  !exists(pk + "/run.sh") && !exists(pk + "/readme.txt"),
+              "no launcher files in a package: no App's files");
+        check(!exists(appsG + "/pe-gamedata") && !exists(appsG + "/.pe_state/gamedata-1.0-1.mod.ini") &&
+                  contains(readFile(appsG + "/.pe_state/gamedata-1.0-2.mod.ini"), "Packages=pe-gamedata\n"),
+              "the App an older version made is removed, with its marker; the new marker names the package");
+        check(exists(modsG + "/done/gamedata-1.0-2.mod") && exists(modsG + "/done/gamedata-1.0-1.mod") &&
+                  !exists(modsG + "/gamedata-1.0-2.mod"),
+              "the data mod moves to Mods/done/ (and the old mod's copy there stays)");
+        check(!exists(appsG + "/.pe_tmp") && !exists(appsG + "/pe-gamedata.gone"), "no scratch left");
+
+        // idempotent: nothing is unpacked again, a user's edit shows it
+        writeFile(pk + "/a.wad", "edited");
+        copyData("gamedata-1.0-2.mod", modsG);
+        Run g3 = run("--start --mods \"" + modsG + "\"" + args);
+        check(g3.code == 0 && !g3.starts("#Adding") && !g3.has("100") && readFile(pk + "/a.wad") == "edited" &&
+                  exists(modsG + "/done/gamedata-1.0-2.mod") && !exists(modsG + "/gamedata-1.0-2.mod"),
+              "the same mod again: no work, the package untouched, the mod moved to done/");
+
+        // a newer version replaces the folder whole: a stray file of the old one does not stay as a game
+        writeFile(pk + "/stray.wad", "stray");
+        copyData("gamedata-1.0-3.mod", modsG);
+        Run g4 = run("--start --mods \"" + modsG + "\"" + args);
+        check(g4.code == 0 && g4.has("#Adding Game Data") && readFile(pk + "/a.wad") == binData(3000, 13) &&
+                  !exists(pk + "/stray.wad") && contains(readFile(pk + "/package.ini"), "Version=1.0-3\n") &&
+                  contains(readFile(pk + "/package.ini"), "PeSource=gamedata-1.0-3.mod\n") &&
+                  !exists(modsG + "/done/gamedata-1.0-2.mod") && exists(modsG + "/done/gamedata-1.0-3.mod") &&
+                  !exists(pkgG + "/Packages~pe-gamedata.old") && !exists(appsG + "/.pe_tmp"),
+              "a newer version replaces the package whole, retires the old mod from done/");
+        copyData("gamedata-1.0-2.mod", modsG);
+        Run g5 = run("--start --mods \"" + modsG + "\"" + args);
+        check(g5.code == 0 && g5.mentions("Game Data not added (a newer version, 1.0-3, is installed)") &&
+                  contains(readFile(pk + "/package.ini"), "Version=1.0-3\n"),
+              "an older data mod changes nothing and says why");
+
+        // a folder of Packages/ that is not ours (no PeSource) is never touched
+        const string appsH = root + "/AppsGH", pkgH = root + "/PackagesGH";
+        makeDir(pkgH);
+        makeDir(pkgH + "/pe-gamedata");
+        writeFile(pkgH + "/pe-gamedata/package.ini", "Title=Mine\n");
+        Run h1 = run("--start --mod \"" + string(TEST_DATA) + "/gamedata-1.0-2.mod\" --apps \"" + appsH +
+                     "\" --packages \"" + pkgH + "\"");
+        check(h1.code == 0 && h1.mentions("exists and is not from a mod") &&
+                  readFile(pkgH + "/pe-gamedata/package.ini") == "Title=Mine\n" && !exists(pkgH + "/pe-gamedata/a.wad"),
+              "a Packages folder without PeSource is left alone");
+
+        // a killed replacement: the package moved aside is put back in Packages/, not in Apps/
+        const string appsK = root + "/AppsGK", pkgK = root + "/PackagesGK";
+        makeDir(appsK);
+        makeDir(appsK + "/.pe_tmp");
+        makeDir(appsK + "/.pe_tmp/Packages~pe-lost.old");
+        writeFile(appsK + "/.pe_tmp/Packages~pe-lost.old/x.wad", "kept");
+        run("--start --mod \"" + string(TEST_DATA) + "/normal_1.0.mod\" --apps \"" + appsK + "\" --packages \"" + pkgK +
+            "\"");
+        check(readFile(pkgK + "/pe-lost/x.wad") == "kept" && !exists(appsK + "/pe-lost"),
+              "a package moved aside by a killed run is put back in Packages/");
+
+        // a link inside the data folder becomes a copy; the default Packages/ is next to Apps/
+        const string defRoot = root + "/DefaultG";
+        makeDir(defRoot);
+        Run l1 = run("--start --mod \"" + string(TEST_DATA) + "/linkdata-1.0-1.mod\" --apps \"" + defRoot + "/Apps\"");
+        check(l1.code == 0 && l1.has("#Adding Link Data") &&
+                  readFile(defRoot + "/Packages/pe-linkdata/GAME.EXE") == binData(500, 21),
+              "a link in a data mod becomes a copy; Packages/ is next to Apps/ by default");
+
+        // refused: no package.ini, a missing game file, a kind that is not one, a file outside the package
+        const string appsR = root + "/AppsGR", pkgR = root + "/PackagesGR";
+        const string rargs = " --apps \"" + appsR + "\" --packages \"" + pkgR + "\"";
+        Run r1 = run("--start --mod \"" + string(TEST_DATA) + "/nodesc-1.0-1.mod\"" + rargs);
+        Run r2 = run("--start --mod \"" + string(TEST_DATA) + "/nofile-1.0-1.mod\"" + rargs);
+        Run r3 = run("--start --mod \"" + string(TEST_DATA) + "/badkind-1.0-1.mod\"" + rargs);
+        Run r4 = run("--start --mod \"" + string(TEST_DATA) + "/escape-1.0-1.mod\"" + rargs);
+        check(r1.code == 0 && r1.mentions("No Descriptor not added (it has no package.ini)") &&
+                  r2.mentions("No File not added (its package.ini Game1.File gone.wad is not in the package)") &&
+                  r3.mentions("Bad Kind not added (its package.ini names a kind that is not a content kind") &&
+                  r4.mentions("Escape not added (its package.ini Game1.File is not a path inside the package)"),
+              "a data mod with no package.ini, a missing game file, a bad kind or an escaping path: refused, why said");
+        check(!exists(pkgR) && !exists(appsR + "/pe-nodesc") && !exists(appsR + "/pe-nofile") &&
+                  !exists(appsR + "/pe-badkind") && !exists(appsR + "/pe-escape"),
+              "and nothing is added, neither a package nor an App");
+
+        // an engine: Uses= and PackageDir= from launcher.cfg; a bad value is dropped with a #WARN
+        const string appsE = root + "/AppsGE";
+        Run e1 = run("--start --mod \"" + string(TEST_DATA) + "/engine-1.0-1.mod\" --apps \"" + appsE + "\"");
+        check(e1.code == 0 && !e1.starts("#WARN") &&
+                  readFile(appsE + "/pe-engine/app.ini") ==
+                      "Title=Engine\nAuthor=ModMyClassic\nVersion=1.0-1\nReadme=readme.txt\nStartup=run.sh\n"
+                      "Exec.psc=run.sh\nCategory=PE\nPeSource=engine-1.0-1.mod\nPadMode=psc-kernel\n"
+                      "Uses=doom-iwad; heretic-iwad\nPackageDir=WAD; MODS\n",
+              "an engine's launcher_uses / launcher_package_dir become Uses= and PackageDir=");
+        const string appsB = root + "/AppsGB";
+        Run e2 = run("--start --mod \"" + string(TEST_DATA) + "/badengine-1.0-1.mod\" --apps \"" + appsB + "\"");
+        check(e2.code == 0 &&
+                  e2.mentions("Bad Engine: launcher_uses doom iwad is not a list of content kinds (dropped)") &&
+                  e2.mentions(
+                      "Bad Engine: launcher_package_dir ../out is not a list of folders inside the App (dropped)") &&
+                  exists(appsB + "/pe-badengine/app.ini") &&
+                  !contains(readFile(appsB + "/pe-badengine/app.ini"), "Uses=") &&
+                  !contains(readFile(appsB + "/pe-badengine/app.ini"), "PackageDir="),
+              "bad Uses= / PackageDir= values are dropped with a warning, the App is still made");
+        check(!contains(readFile(appsE + "/pe-engine/app.ini"), "Package=") &&
+                  !contains(readFile(appsE + "/.pe_state/engine-1.0-1.mod.ini"), "Packages="),
+              "an App's marker has no Packages= line");
+    }
 
     // ---- nothing to do
     makeDir(root + "/Empty");

@@ -12,10 +12,11 @@
 //
 //   pe --version                                    "#PE app packages V<Version> - <what it does>"
 //   pe --ismine --mod <file>                        exit 0 = mine (a .mod in the ar format), 1 = not mine
-//   pe --start --mods <Mods dir> [--apps <dir>]     every *.mod in the folder
-//   pe --start --mod <file> [--apps <dir>]          one package
+//   pe --start --mods <Mods dir> [--apps <dir>] [--packages <dir>]   every *.mod in the folder
+//   pe --start --mod <file> [--apps <dir>] [--packages <dir>]        one package
 //
-// The Apps folder is --apps, else $AB_APPS_DIR, else Apps/ next to the Mods folder. The compatibility list is
+// The Apps folder is --apps, else $AB_APPS_DIR, else Apps/ next to the Mods folder; Packages/ (game data) is
+// --packages, else $AB_PACKAGES_DIR, else next to Apps/. The compatibility list is
 // --compat, else $AB_PE_COMPAT, else rc/pe_compat.ini under $AB_ROOT (or $AB_ROOT/Autobleem), else the copy
 // built in. What it prints (one line at a time, flushed): #Starting - <title>, #Converting <file>, n/m, 0..100,
 // #Adding <title>, #WARN - <text>, and at the end #DONE (exit 0) or #ERROR - <text> (exit 1).
@@ -923,13 +924,18 @@ int compareVersions(const string &a, const string &b) {
 //******************
 struct Paths {
     string apps;
-    string tmp;   // Apps/.pe_tmp: unpacking and replacing happen here, on the same filesystem as Apps
-    string state; // Apps/.pe_state: one small marker per package
+    string packages; // Packages/: where a game-data mod is unpacked to (made only when there is one)
+    string tmp;      // Apps/.pe_tmp: unpacking and replacing happen here, on the same filesystem as Apps
+    string state;    // Apps/.pe_state: one small marker per package
 };
 
-Paths pathsFor(const string &apps) {
-    return {apps, apps + "/" + TmpName, apps + "/.pe_state"};
+Paths pathsFor(const string &apps, const string &packages) {
+    return {apps, packages, apps + "/" + TmpName, apps + "/.pe_state"};
 }
+
+// A folder moved aside in .pe_tmp to be replaced is "<name>.old"; one of Packages/ carries this prefix, because
+// Apps/ and Packages/ both have a pe-<name>.
+const char *PackagesAside = "Packages~";
 
 // A killed run left unpacked folders in .pe_tmp (cleared) - and maybe a folder it had moved aside to replace
 // it, with nothing in its place (put back).
@@ -937,8 +943,10 @@ void recover(const Paths &p) {
     for (const Entry &e : listDir(p.tmp)) {
         string path = p.tmp + "/" + e.name;
         if (e.isDir && endsWith(e.name, ".old")) {
-            string final = p.apps + "/" + e.name.substr(0, e.name.size() - 4);
-            if (!exists(final))
+            string base = e.name.substr(0, e.name.size() - 4);
+            string final = startsWith(base, PackagesAside) ? p.packages + "/" + base.substr(strlen(PackagesAside))
+                                                           : p.apps + "/" + base;
+            if (!exists(final) && makeDirs(dirName(final)))
                 renameFile(path, final);
         }
     }
@@ -966,10 +974,28 @@ AppIni readAppIni(const string &folder) {
     return ini;
 }
 
+// package.ini (the packages spec, 2.2): lines of key=value, a '#' starts a comment anywhere on a line
+AppIni readPackageIni(const string &folder) {
+    AppIni ini;
+    string text;
+    if (!readTextFile(folder + "/package.ini", text, 65536))
+        return ini;
+    for (string line : splitLines(text)) {
+        size_t hash = line.find('#');
+        if (hash != string::npos)
+            line.resize(hash);
+        size_t eq = line.find('=');
+        if (eq != string::npos && !line.empty() && line[0] != ';')
+            ini.keys[lower(trim(line.substr(0, eq)))] = trim(line.substr(eq + 1));
+    }
+    return ini;
+}
+
 struct Marker {
     string version;
     int64_t size = -1;
     vector<string> apps;
+    vector<string> packages; // the folders of Packages/ it made (a game-data mod)
 };
 
 string markerPath(const Paths &p, const string &modName) {
@@ -990,13 +1016,14 @@ Marker readMarker(const Paths &p, const string &modName) {
             m.version = v;
         else if (k == "Size")
             m.size = atoll(v.c_str());
-        else if (k == "Apps") {
+        else if (k == "Apps" || k == "Packages") {
+            vector<string> &into = k == "Apps" ? m.apps : m.packages;
             size_t start = 0;
             while (start <= v.size()) {
                 size_t comma = v.find(',', start);
                 string name = v.substr(start, comma == string::npos ? string::npos : comma - start);
                 if (!name.empty())
-                    m.apps.push_back(name);
+                    into.push_back(name);
                 if (comma == string::npos)
                     break;
                 start = comma + 1;
@@ -1007,12 +1034,14 @@ Marker readMarker(const Paths &p, const string &modName) {
 }
 
 void writeMarker(const Paths &p, const string &modName, const Marker &m) {
-    string apps;
+    string apps, packages;
     for (const string &a : m.apps)
         apps += (apps.empty() ? "" : ",") + a;
+    for (const string &a : m.packages)
+        packages += (packages.empty() ? "" : ",") + a;
     makeDirs(p.state);
-    writeTextFile(markerPath(p, modName),
-                  "Version=" + m.version + "\nSize=" + to_string(m.size) + "\nApps=" + apps + "\n");
+    writeTextFile(markerPath(p, modName), "Version=" + m.version + "\nSize=" + to_string(m.size) + "\nApps=" + apps +
+                                              (packages.empty() ? "" : "\nPackages=" + packages) + "\n");
 }
 
 // The package is already converted: the same file size and Version as the marker says, and each of its Apps
@@ -1023,6 +1052,11 @@ bool alreadyConverted(const Paths &p, const string &modName, int64_t size, const
         return false;
     for (const string &app : m.apps) {
         AppIni ini = readAppIni(p.apps + "/" + app);
+        if (ini.get("pesource") != modName || ini.get("version") != version)
+            return false;
+    }
+    for (const string &pkg : m.packages) {
+        AppIni ini = readPackageIni(p.packages + "/" + pkg);
         if (ini.get("pesource") != modName || ini.get("version") != version)
             return false;
     }
@@ -1041,20 +1075,25 @@ void mergeOld(const string &oldDir, const string &newDir) {
     }
 }
 
-// the staged folder into Apps/<name>: renamed in when new, or merged with the old one first; false on failure
-bool installFolder(const Paths &p, const string &staged, const string &name) {
-    string final = p.apps + "/" + name;
+// The staged folder into `root`/<name> (Apps/, or Packages/ with `asPackage`): renamed in when new, or merged with
+// the old one first (an App keeps what the user and the program put there; a package is replaced whole, so no file
+// of an older version stays to be read as a game); false on failure.
+bool installFolder(const Paths &p, const string &staged, const string &name, bool asPackage = false) {
+    const string root = asPackage ? p.packages : p.apps;
+    string final = root + "/" + name;
     if (!exists(final))
-        return renameFile(staged, final);
-    string old = p.tmp + "/" + name + ".old";
+        return makeDirs(root) && renameFile(staged, final);
+    string old = p.tmp + "/" + (asPackage ? PackagesAside : "") + name + ".old";
     if (!renameFile(final, old))
         return false;
-    // the user's own settings files are theirs even if the new package ships a file of that name
-    for (const char *keep : {"ab_settings.ini", "pad.ini"}) {
-        if (exists(old + "/" + keep))
-            removeFile(staged + "/" + keep);
+    if (!asPackage) {
+        // the user's own settings files are theirs even if the new package ships a file of that name
+        for (const char *keep : {"ab_settings.ini", "pad.ini"}) {
+            if (exists(old + "/" + keep))
+                removeFile(staged + "/" + keep);
+        }
+        mergeOld(old, staged);
     }
-    mergeOld(old, staged);
     if (!renameFile(staged, final)) {
         renameFile(old, final); // back as it was
         return false;
@@ -1144,10 +1183,178 @@ string readmeText(const Control &c) {
     return text;
 }
 
+//******************
+// game data and the engines that use it (the packages spec, APPS-12)
+//******************
+// a content kind or an id: lower case and digits, single '-' between parts, at most 40 characters
+bool validKind(const string &k) {
+    if (k.empty() || k.size() > 40 || k.front() == '-' || k.back() == '-' || k.find("--") != string::npos)
+        return false;
+    for (char c : k)
+        if (!(islower(static_cast<unsigned char>(c)) || isdigit(static_cast<unsigned char>(c)) || c == '-'))
+            return false;
+    return true;
+}
+
+vector<string> splitList(const string &value, char sep) {
+    vector<string> out;
+    size_t start = 0;
+    while (start <= value.size()) {
+        size_t at = value.find(sep, start);
+        string part = trim(value.substr(start, at == string::npos ? string::npos : at - start));
+        if (!part.empty())
+            out.push_back(part);
+        if (at == string::npos)
+            break;
+        start = at + 1;
+    }
+    return out;
+}
+
+// launcher_uses="doom-iwad;heretic-iwad" -> "doom-iwad; heretic-iwad" for app.ini's Uses=. A kind that does not fit
+// the grammar drops the whole value with `why`; empty when there is none.
+string usesValue(const string &raw, string &why) {
+    string out;
+    for (const string &k : splitList(lower(raw), ';')) {
+        if (!validKind(k)) {
+            why = "launcher_uses " + shown(raw, 80) + " is not a list of content kinds";
+            return "";
+        }
+        out += (out.empty() ? "" : "; ") + k;
+    }
+    return out;
+}
+
+// launcher_package_dir="WAD;MODS": folders inside the App, relative, no "..", no backslash
+string packageDirValue(const string &raw, string &why) {
+    string out;
+    for (const string &d : splitList(raw, ';')) {
+        string plain;
+        if (d[0] == '/' || d.find(':') != string::npos || !plainPath(d, plain) || plain.empty() || plain != d) {
+            why = "launcher_package_dir " + shown(raw, 80) + " is not a list of folders inside the App";
+            return "";
+        }
+        out += (out.empty() ? "" : "; ") + d;
+    }
+    return out;
+}
+
+bool truthy(const string &v) {
+    return flagValue(v) == "1";
+}
+
+// the package name of a mod file: "freedoomdata-0.13.0-2.mod" -> "freedoomdata" (up to the first '-' and a digit)
+string modStem(const string &modName) {
+    for (size_t i = 0; i + 1 < modName.size(); ++i)
+        if (modName[i] == '-' && isdigit(static_cast<unsigned char>(modName[i + 1])))
+            return modName.substr(0, i);
+    size_t dot = modName.rfind('.');
+    return dot == string::npos ? modName : modName.substr(0, dot);
+}
+
+// `rel` (relative, '/' separated) in `root`, each part found whatever its letter case; "" when it is not there
+string findInside(const string &root, const string &rel) {
+    string at = root, real;
+    for (const string &part : splitList(rel, '/')) {
+        string found;
+        for (const Entry &e : listDir(at))
+            if (e.name == part || lower(e.name) == lower(part)) {
+                found = e.name;
+                if (e.name == part)
+                    break;
+            }
+        if (found.empty())
+            return "";
+        at += "/" + found;
+        real += (real.empty() ? "" : "/") + found;
+    }
+    return real;
+}
+
+// A package.ini of a game-data mod (the descriptor of the spec, 2.2): a Title, a kind for every game, and at least
+// one game whose file is there. The reader of the launcher drops what is wrong quietly; here it is a reason the
+// mod is not converted ("" = fine).
+string checkPackageIni(const string &folder) {
+    string text;
+    if (!exists(folder + "/package.ini"))
+        return "it has no package.ini";
+    if (!readTextFile(folder + "/package.ini", text, 65536))
+        return "its package.ini cannot be read or is over 64 KB";
+    AppIni ini = readPackageIni(folder);
+    if (ini.get("title").empty())
+        return "its package.ini has no Title";
+    vector<string> kinds = splitList(lower(ini.get("kind")), ';');
+    for (const string &k : kinds)
+        if (!validKind(k))
+            return "its package.ini names a kind that is not a content kind: " + shown(k, 40);
+    int games = 0;
+    for (int n = 1; !ini.get("game" + to_string(n) + ".title").empty(); ++n) {
+        const string at = "Game" + to_string(n);
+        const string kind = lower(ini.get("game" + to_string(n) + ".kind"));
+        if (kind.empty() ? kinds.empty() : !validKind(kind))
+            return "its package.ini has no usable Kind for " + at;
+        string file = ini.get("game" + to_string(n) + ".file"), plain;
+        if (file.empty() || file[0] == '/' || file.find(':') != string::npos || !plainPath(file, plain) ||
+            plain.empty() || plain != file)
+            return "its package.ini " + at + ".File is not a path inside the package";
+        if (findInside(folder, file).empty())
+            return "its package.ini " + at + ".File " + shown(file, 80) + " is not in the package";
+        ++games;
+    }
+    if (games == 0)
+        return "its package.ini names no game (Game1.Title, Game1.File)";
+    return "";
+}
+
+// package.ini as the launcher's scan will read it: what the mod's descriptor says, plus the stamps of this program -
+// Source=mod, PeSource=<the .mod>, the control file's Version (the one the marker and a replacement go by) and the
+// folder's own image when the descriptor names none.
+bool stampPackageIni(const string &folder, const string &modName, const string &version, const string &image) {
+    string text;
+    if (!readTextFile(folder + "/package.ini", text, 65536))
+        return false;
+    string out;
+    bool hasImage = false;
+    for (const string &line : splitLines(text)) {
+        size_t eq = line.find('=');
+        string key = eq == string::npos ? "" : lower(trim(line.substr(0, eq)));
+        if (key == "source" || key == "pesource" || key == "version")
+            continue; // ours to write, never a value the mod brought
+        hasImage = hasImage || (key == "image" && !trim(line.substr(eq + 1)).empty());
+        out += line + "\n";
+    }
+    if (!hasImage && !image.empty())
+        out += "Image=" + image + "\n";
+    out += "Version=" + version + "\nSource=mod\nPeSource=" + modName + "\n";
+    return writeTextFile(folder + "/package.ini", out);
+}
+
+// An App an older version of this mod made - Apps/<name> whose app.ini names a .mod of the same package
+// (freedoomdata-0.13.0-1.mod for freedoomdata-0.13.0-2.mod) as its PeSource - is removed once the package is in
+// place; any other App stays, whoever's. It goes through .pe_tmp (removeTree refuses anything else) and takes the
+// old .mod's marker with it. True when it was removed.
+bool removeOldApp(const Paths &p, const string &name, const string &modName) {
+    const string app = p.apps + "/" + name;
+    if (!isDir(app))
+        return false;
+    AppIni have = readAppIni(app);
+    const string source = have.get("pesource");
+    if (source.empty() || source.find_first_of("/\\") != string::npos || modStem(source) != modStem(modName))
+        return false;
+    const string gone = p.tmp + "/" + name + ".gone";
+    if (!makeDirs(p.tmp) || !renameFile(app, gone))
+        return false;
+    removeTree(gone);
+    removeFile(markerPath(p, source));
+    return true;
+}
+
 struct Result {
     bool ok = false;
     string why;
-    vector<string> apps; // the folders (pe-...) this package's Apps are in
+    vector<string> apps;            // the folders (pe-...) this package's Apps are in
+    vector<string> packages;        // the folders of Packages/ (pe-...) its game data is in
+    vector<string> removedApps;     // the Apps of older versions this package's data replaced
     vector<string> replacedSources; // the other packages whose App this one replaced (their .mod is retired)
 };
 
@@ -1327,12 +1534,14 @@ Result convert(const Paths &p, const map<string, CompatRule> &compat, const stri
     set<string> taken;
     for (auto &kv : launchers) {
         Launcher &l = kv.second;
-        if (!l.hasCfg || !l.hasLaunch) {
+        map<string, string> cfg = parseShellVars(l.cfg);
+        // game data (launcher_package="1"): a package of Packages/, no program - it needs no launch.sh
+        const bool isData = l.hasCfg && truthy(cfgValue(cfg, "launcher_package"));
+        if (!l.hasCfg || (!l.hasLaunch && !isData)) {
             say("#WARN - " + modName + ": " + shown(l.dir, 60) +
                 " is not a launcher folder (launcher.cfg or launch.sh missing)");
             continue;
         }
-        map<string, string> cfg = parseShellVars(l.cfg);
         string fn = cfgValue(cfg, "launcher_filename");
         string title = shown(cfgValue(cfg, "launcher_title", fn), 120);
         if (title.empty())
@@ -1388,8 +1597,61 @@ Result convert(const Paths &p, const map<string, CompatRule> &compat, const stri
             continue;
         }
         const string name = "pe-" + fn;
-        if (!taken.insert(name).second) {
+        if (!taken.insert((isData ? "package/" : "app/") + name).second) {
             say("#WARN - " + modName + ": " + title + " not added (a second folder with the same name)");
+            continue;
+        }
+
+        // game data: the package's place in Packages/ (checked, stamped, put in), then the App an older version
+        // of this mod made is removed. The same rules as for an App: ours (PeSource) and older is replaced,
+        // anything else stays.
+        if (isData) {
+            for (const Launcher::Link &link : l.links) { // links become copies (the stick is FAT)
+                string from = l.staged + "/" + link.target, to = l.staged + "/" + link.rel;
+                if (!exists(from) || isDir(from)) {
+                    say("#WARN - " + modName + ": " + title + ": a link to " + shown(link.target, 80) +
+                        " was left out");
+                    continue;
+                }
+                if (exists(to) || !makeDirs(dirName(to)) || !copyFile(from, to))
+                    return fail("could not copy a link in " + shown(l.dir, 60));
+            }
+            const string bad = checkPackageIni(l.staged);
+            if (!bad.empty()) {
+                say("#WARN - " + modName + ": " + title + " not added (" + bad + ")");
+                continue;
+            }
+            const string have = p.packages + "/" + name;
+            if (exists(have)) {
+                AppIni installed = readPackageIni(have);
+                if (installed.get("pesource").empty()) {
+                    say("#WARN - " + modName + ": " + title + " not added (Packages/" + name +
+                        " exists and is not from a mod)");
+                    continue;
+                }
+                int cmp = compareVersions(control.version, installed.get("version"));
+                if (cmp < 0) {
+                    say("#WARN - " + modName + ": " + title + " not added (a newer version, " +
+                        shown(installed.get("version"), 40) + ", is installed)");
+                    continue;
+                }
+                if (cmp == 0 && installed.get("pesource") != modName)
+                    continue;
+                if (installed.get("pesource") != modName)
+                    result.replacedSources.push_back(installed.get("pesource"));
+            }
+            // no launcher files in a package: the folder is the game's files, package.ini, the icon and the notices
+            removeFile(l.staged + "/launcher.cfg");
+            removeFile(l.staged + "/launch.sh");
+            if (!stampPackageIni(l.staged, modName, shown(control.version, 60),
+                                 exists(l.staged + "/" + fn + ".png") ? fn + ".png" : ""))
+                return fail("could not write package.ini of " + title + " - the stick may be full");
+            say("#Adding " + shown(readPackageIni(l.staged).get("title"), 120));
+            if (!installFolder(p, l.staged, name, true))
+                return fail("could not put " + title + " in Packages");
+            result.packages.push_back(name);
+            if (removeOldApp(p, name, modName))
+                result.removedApps.push_back(name);
             continue;
         }
 
@@ -1442,12 +1704,24 @@ Result convert(const Paths &p, const map<string, CompatRule> &compat, const stri
         if (exists(l.staged + "/" + fn + ".png"))
             ini += "Image=" + fn + ".png\n";
         ini += "Readme=readme.txt\nStartup=run.sh\nExec.psc=run.sh\nCategory=" +
-               (category.empty() ? string("PE") : category) + "\nPeSource=" + modName +
-               "\nPadMode=" + pad + "\n";
+               (category.empty() ? string("PE") : category) + "\nPeSource=" + modName + "\nPadMode=" + pad + "\n";
         if (!dpad2analog.empty())
             ini += "Dpad2Analog=" + dpad2analog + "\n";
         if (!analog2dpad.empty())
             ini += "Analog2Dpad=" + analog2dpad + "\n";
+        // an engine that runs game packages: the kinds it takes and the folders of its own data (the spec, 5.1)
+        string why;
+        string uses = usesValue(cfgValue(cfg, "launcher_uses"), why);
+        if (uses.empty() && !why.empty())
+            say("#WARN - " + modName + ": " + title + ": " + why + " (dropped)");
+        if (!uses.empty())
+            ini += "Uses=" + uses + "\n";
+        why.clear();
+        string dirs = packageDirValue(cfgValue(cfg, "launcher_package_dir"), why);
+        if (dirs.empty() && !why.empty())
+            say("#WARN - " + modName + ": " + title + ": " + why + " (dropped)");
+        if (!dirs.empty())
+            ini += "PackageDir=" + dirs + "\n";
         const char *runSh = "#!/bin/sh\n"
                             "# PE App launcher - generated, do not edit\n"
                             "APP_DIR=\"$(cd \"$(dirname \"$0\")\" && pwd)\"\n"
@@ -1470,6 +1744,7 @@ Result convert(const Paths &p, const map<string, CompatRule> &compat, const stri
     m.version = control.version;
     m.size = total;
     m.apps = result.apps;
+    m.packages = result.packages;
     writeMarker(p, modName, m);
     result.ok = true;
     return result;
@@ -1609,7 +1884,14 @@ int main(int argc, char **argv) {
             say("#DONE");
             return 0;
         }
-        return start(mods, pathsFor(appsDir), loadCompat(value("--compat")), doneDir);
+        // Packages/ is --packages, else $AB_PACKAGES_DIR, else the folder next to Apps/ (the stick's data root)
+        string packagesDir = value("--packages");
+        if (packagesDir.empty() && getenv("AB_PACKAGES_DIR"))
+            packagesDir = withoutSlash(getenv("AB_PACKAGES_DIR"));
+        if (packagesDir.empty())
+            packagesDir =
+                (dirName(appsDir) == "." && appsDir.find('/') == string::npos ? "." : dirName(appsDir)) + "/Packages";
+        return start(mods, pathsFor(appsDir, packagesDir), loadCompat(value("--compat")), doneDir);
     }
     return usage();
 }

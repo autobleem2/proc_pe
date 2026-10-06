@@ -153,6 +153,51 @@ def main():
     untyped_word = {"oddapp": {"launcher.cfg": cfg("oddapp", "Odd App"), "launch.sh": LAUNCH}}
     make_mod("oddtype_1.0.mod", "oddapp", "1.0", untyped_word, "An odd one", category="pe")
 
+    # game data (the packages spec, APPS-12): launcher_package="1" and a package.ini in the launcher folder. The
+    # first version of "gamedata" is the old kind (a launch.sh and no mark: older proc_pe made an App of it), the
+    # second one is the data package; an engine names the kinds it runs
+    wad_a, wad_b = binary(3000, 11), binary(2000, 12)
+    old_data = {"gamedata": {"launcher.cfg": cfg("gamedata", "Game Data", "A Maker"), "launch.sh": LAUNCH,
+                             "a.wad": wad_a, "b.wad": wad_b}}
+    make_mod("gamedata-1.0-1.mod", "gamedata", "1.0-1", old_data, "Game data, the old way")
+    pkg_ini = (b"[package]\nTitle=Game Data\nKind=doom-iwad\nLicence=BSD-3-Clause\nAuthor=A Maker\n"
+               b"Source=store\nPeSource=bogus.mod\nVersion=0.0\n"
+               b"Game1.Id=first\nGame1.Title=First Game\nGame1.File=a.wad\n"
+               b"Game2.Id=second\nGame2.Title=Second Game\nGame2.File=Sub/B.WAD\n")
+    data = {"gamedata": {"launcher.cfg": cfg("gamedata", "Game Data", "A Maker") + b'launcher_package="1"\n',
+                         "package.ini": pkg_ini, "a.wad": wad_a, "Sub/b.wad": wad_b, "gamedata.png": binary(100, 5),
+                         "licences/COPYING.txt": b"licence\n", "SOURCE.txt": b"source\n"}}
+    make_mod("gamedata-1.0-2.mod", "gamedata", "1.0-2", data, "Game data")
+    data3 = {"gamedata": dict(data["gamedata"], **{"a.wad": binary(3000, 13)})}
+    make_mod("gamedata-1.0-3.mod", "gamedata", "1.0-3", data3, "Game data, newer")
+    # a data mod with a symbolic link inside the folder (the stick is FAT: it becomes a copy)
+    linked = {"linkdata": {"launcher.cfg": cfg("linkdata", "Link Data") + b'launcher_package="yes"\n',
+                           "package.ini": b"Title=Link Data\nKind=dos-game\nGame1.Title=Linked\nGame1.File=GAME.EXE\n",
+                           "real.exe": binary(500, 21)}}
+    make_mod("linkdata-1.0-1.mod", "linkdata", "1.0-1", linked, "Link data",
+             extra=[(PREFIX + "linkdata/GAME.EXE", "real.exe", 0o777, "s")])
+    # data mods that are refused: no package.ini, a game file that is not there, a kind that is not a kind
+    nodesc = {"nodesc": {"launcher.cfg": cfg("nodesc", "No Descriptor") + b'launcher_package="1"\n', "a.wad": wad_a}}
+    make_mod("nodesc-1.0-1.mod", "nodesc", "1.0-1", nodesc, "No package.ini")
+    nofile = {"nofile": {"launcher.cfg": cfg("nofile", "No File") + b'launcher_package="1"\n',
+                         "package.ini": b"Title=No File\nKind=doom-iwad\nGame1.Title=Gone\nGame1.File=gone.wad\n"}}
+    make_mod("nofile-1.0-1.mod", "nofile", "1.0-1", nofile, "A game file that is not there")
+    badkind = {"badkind": {"launcher.cfg": cfg("badkind", "Bad Kind") + b'launcher_package="1"\n',
+                           "package.ini": b"Title=Bad Kind\nKind=Doom IWAD\nGame1.Title=G\nGame1.File=a.wad\n",
+                           "a.wad": wad_a}}
+    make_mod("badkind-1.0-1.mod", "badkind", "1.0-1", badkind, "A kind with a blank")
+    escape = {"escape": {"launcher.cfg": cfg("escape", "Escape") + b'launcher_package="1"\n',
+                         "package.ini": b"Title=Escape\nKind=doom-iwad\nGame1.Title=G\nGame1.File=../a.wad\n",
+                         "a.wad": wad_a}}
+    make_mod("escape-1.0-1.mod", "escape", "1.0-1", escape, "A game file outside the package")
+    # an engine that runs game packages: Uses= and PackageDir= from launcher.cfg; a bad value is dropped with a #WARN
+    engine = {"engine": {"launcher.cfg": cfg("engine", "Engine") + b'launcher_uses="doom-iwad; Heretic-IWAD"\n'
+                         b'launcher_package_dir="WAD;MODS"\n', "launch.sh": LAUNCH}}
+    make_mod("engine-1.0-1.mod", "engine", "1.0-1", engine, "An engine")
+    badengine = {"badengine": {"launcher.cfg": cfg("badengine", "Bad Engine") + b'launcher_uses="doom iwad"\n'
+                               b'launcher_package_dir="../out"\n', "launch.sh": LAUNCH}}
+    make_mod("badengine-1.0-1.mod", "badengine", "1.0-1", badengine, "An engine with bad values")
+
     # two launchers in one package, an xz control archive
     two = {
         "alpha": {"launcher.cfg": cfg("alpha", "Alpha"), "launch.sh": LAUNCH, "alpha.png": binary(100)},
