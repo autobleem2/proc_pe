@@ -16,6 +16,7 @@
 //   othertype_1.0.mod  Type: OTHER      garbage.mod   no archive at all
 //   dpkg_1.0.mod       dpkgapp, made by the real dpkg-deb (xz control archive, root-owned entries)
 //
+#include <algorithm>
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
@@ -31,12 +32,14 @@
 #define MKDIR(p) _mkdir(p)
 #define POPEN _popen
 #define PCLOSE _pclose
+#define SETENV(k, v) _putenv_s(k, v)
 #else
 #include <sys/stat.h>
 #include <sys/wait.h>
 #define MKDIR(p) mkdir(p, 0777)
 #define POPEN popen
 #define PCLOSE pclose
+#define SETENV(k, v) setenv(k, v, 1)
 #endif
 
 using namespace std;
@@ -197,6 +200,9 @@ const string expectedRunSh = "#!/bin/sh\n"
 } // namespace
 
 int main() {
+    // every machine's binary is built to take only its own packages (PE_MACHINE); the fixtures are made for the console,
+    // so the tests run as "any machine" and the machine rule has its own block below
+    SETENV("AB_PE_MACHINE", "any");
     const string root = "selftest_tree";
     removeTree(root);
     makeDir(root);
@@ -360,6 +366,84 @@ int main() {
               string(app) + ": no Platform line or a word we do not know is the console's (as before)");
     }
     check(contains(readFile(appsP + "/pe-rpiapp/run.sh"), "pe_run.sh"), "the Pi's App starts through the same runner");
+
+    // ---- one machine's packages only (1.5.0): a package whose Platform line names another machine is left in Mods -
+    // no App, no marker, no overwrite - on every machine's binary; game data (Category: packages) is taken everywhere
+    {
+        const char *appMods[] = {"platform-rpi_1.0.mod",    "platform-noplat_1.0.mod", "platform-oddplat_1.0.mod",
+                                 "platform-rpicase_1.0.mod", "platform-rpi64_1.0.mod",  "platform-pcusb_1.0.mod",
+                                 "platform-pcusbcase_1.0.mod"};
+        struct Machine {
+            const char *key;
+            vector<string> mods; // the .mod files this machine converts
+            vector<string> apps; // the Apps they make
+        };
+        const vector<Machine> machines = {
+            {"psc", {"platform-noplat_1.0.mod", "platform-oddplat_1.0.mod"}, {"pe-noplatapp", "pe-oddplatapp"}},
+            {"rpi", {"platform-rpi_1.0.mod", "platform-rpicase_1.0.mod"}, {"pe-rpiapp", "pe-rpicaseapp"}},
+            {"rpi64", {"platform-rpi64_1.0.mod"}, {"pe-rpi64app"}},
+            {"pcusb", {"platform-pcusb_1.0.mod", "platform-pcusbcase_1.0.mod"}, {"pe-pcusbapp", "pe-pcusbcaseapp"}},
+        };
+        const string appNames[] = {"pe-rpiapp",  "pe-noplatapp", "pe-oddplatapp", "pe-rpicaseapp",
+                                   "pe-rpi64app", "pe-pcusbapp", "pe-pcusbcaseapp"};
+        for (const Machine &m : machines) {
+            const string key = m.key;
+            const string modsM = root + "/ModsM-" + key, appsM = root + "/AppsM-" + key, pkgsM = root + "/PackagesM-" + key;
+            makeDir(modsM);
+            for (const char *name : appMods)
+                copyData(name, modsM);
+            copyData("platform-data_1.0.mod", modsM);
+            // an App of the other kind that is there already (an older version of a package of another machine): it stays as it is
+            const string keep = "Title=Old\nVersion=0.1\nPeSource=platform-rpi_0.1.mod\n";
+            if (key != "rpi") {
+                makeDir(appsM);
+                makeDir(appsM + "/pe-rpiapp");
+                writeFile(appsM + "/pe-rpiapp/app.ini", keep);
+                writeFile(appsM + "/pe-rpiapp/save.dat", "mine");
+            }
+            SETENV("AB_PE_MACHINE", m.key);
+            Run r = run("--start --mods \"" + modsM + "\" --apps \"" + appsM + "\" --packages \"" + pkgsM + "\"");
+            SETENV("AB_PE_MACHINE", "any");
+            check(r.code == 0 && r.has("#DONE"), key + ": a package of another machine is no failure - the run ends #DONE");
+            for (size_t i = 0; i < sizeof(appMods) / sizeof(appMods[0]); ++i) {
+                const string mod = appMods[i];
+                const bool mine = find(m.mods.begin(), m.mods.end(), mod) != m.mods.end();
+                check(mine == !exists(modsM + "/" + mod) && mine == exists(modsM + "/done/" + mod),
+                      key + ": " + mod + (mine ? " is converted and retired" : " stays in Mods"));
+                check(!mine || !r.starts("#WARN - " + mod + ":"),
+                      key + ": " + mod + " is no #WARN when it is converted");
+                check(mine || r.starts("#WARN - " + mod + ": built for"),
+                      key + ": " + mod + " is left with a line that says why");
+                check(mine || !exists(appsM + "/.pe_state/" + mod + ".ini"),
+                      key + ": " + mod + " leaves no marker");
+            }
+            for (const string &a : appNames) {
+                const bool mine = find(m.apps.begin(), m.apps.end(), a) != m.apps.end();
+                if (a == "pe-rpiapp" && key != "rpi") {
+                    check(readFile(appsM + "/pe-rpiapp/app.ini") == keep && readFile(appsM + "/pe-rpiapp/save.dat") == "mine",
+                          key + ": an App that was there is not touched by a package of another machine");
+                    continue;
+                }
+                check(mine == exists(appsM + "/" + a + "/app.ini"), key + ": " + a + (mine ? " is made" : " is not made"));
+            }
+            check(exists(pkgsM + "/pe-platdata/package.ini") && exists(modsM + "/done/platform-data_1.0.mod"),
+                  key + ": game data built the console's way is taken on every machine");
+            // a second run ends the same way (the left packages are named again, nothing is converted twice)
+            Run again = run("--start --mods \"" + modsM + "\" --apps \"" + appsM + "\" --packages \"" + pkgsM + "\"");
+            check(again.code == 0, key + ": the second run ends #DONE too");
+        }
+        // the machine word is read without case; a word that is no machine takes every package (the host build's rule)
+        const string modsU = root + "/ModsMU", appsU = root + "/AppsMU";
+        makeDir(modsU);
+        copyData("platform-rpi_1.0.mod", modsU);
+        SETENV("AB_PE_MACHINE", " PCUSB ");
+        Run up = run("--start --mods \"" + modsU + "\" --apps \"" + appsU + "\"");
+        SETENV("AB_PE_MACHINE", "any");
+        check(up.code == 0 && exists(modsU + "/platform-rpi_1.0.mod") && !exists(appsU + "/pe-rpiapp"),
+              "the machine key is read without case and blanks");
+        Run anyRun = run("--start --mods \"" + modsU + "\" --apps \"" + appsU + "\"");
+        check(anyRun.code == 0 && exists(appsU + "/pe-rpiapp/app.ini"), "any: every package is taken");
+    }
 
     // ---- a Mods folder: two launchers, a blocked one, a hybrid, CRLF, and everything unsafe
     const string mods2 = root + "/Mods2";

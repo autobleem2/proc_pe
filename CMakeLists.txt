@@ -39,6 +39,9 @@ set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS package/processor
 
 add_executable(pe src/main.cpp)
 target_compile_definitions(pe PRIVATE PE_VERSION="${PE_VERSION}")
+# the machine this binary serves (psc, rpi, rpi64, pcusb; ci/build.sh passes it): packages built for another one stay in Mods
+set(PE_MACHINE "" CACHE STRING "platform key of the machine this binary runs on (empty: every package is taken)")
+target_compile_definitions(pe PRIVATE PE_MACHINE="${PE_MACHINE}")
 target_link_libraries(pe miniz archive)
 if (MINGW OR WIN32)
     # one file to copy onto the stick: no libstdc++/libgcc DLLs next to it

@@ -153,6 +153,13 @@ def main():
         launcher = {name + "app": {"launcher.cfg": cfg(name + "app", name.title() + " App"), "launch.sh": LAUNCH}}
         make_mod("platform-%s_1.0.mod" % name, name + "app", "1.0", launcher, "Built for " + name, platform=platform)
 
+    # game data built the console's way (Platform: SONYPSC armhf, Category: packages): the same on every machine, so a
+    # machine that is not the console still takes it (1.5.0)
+    plat_data = {"platdata": {"launcher.cfg": cfg("platdata", "Plat Data") + b'launcher_package="1"\n',
+                              "package.ini": b"Title=Plat Data\nKind=dos-game\nGame1.Title=Plat\nGame1.File=PLAT.EXE\n",
+                              "PLAT.EXE": binary(300, 31)}}
+    make_mod("platform-data_1.0.mod", "platdata", "1.0", plat_data, "Plat data", category="packages")
+
     # package types: the control file's "Category" (a Description line, or a field of its own) files the App in
     # that category as "<title> (mod)"; a word that is no category ("pe") is an untyped package
     typed = {"typedapp": {"launcher.cfg": cfg("typedapp", "Typed App", "An Author"), "launch.sh": LAUNCH}}

@@ -101,6 +101,12 @@ folder's name) refuses a launcher with a `#WARN` and the reason; the rest of the
   removes the old version's `.mod` from `done/`. The move never removes an App: this program never removes an App
   for a missing `.mod` (the marker, not the file, says what is converted). A move that fails (`Mods/done` is a file,
   the stick is read-only) is a `#WARN`; the App is complete and the `.mod` stays in `Mods/`.
+- **a package built for another machine is left alone** (1.5.0): each machine's binary knows its own key (psc, rpi,
+  rpi64, pcusb - `-DPE_MACHINE`, set by `ci/build.sh`; `$AB_PE_MACHINE` overrides it, `any` or the host and Windows builds
+  take every package). A `.mod` whose Platform line names another machine (no line = the console's) is not unpacked,
+  makes no App, writes no marker and stays in `Mods/` with a `#WARN - <file>: built for <Platform>, this machine is <key> -
+  left in Mods` line (not a failure: the run still ends `#DONE`). Game data (`Category: packages`) is the same on every
+  machine and is always taken.
 - **never overwrites what is not its own**: an `Apps/pe-*` folder without `PeSource` stays; the same or an older
   Version than the installed one changes nothing (an older one warns); a **newer Version replaces the folder and
   keeps every file of the old folder that the new package does not ship**, at any depth (saves, game data - and

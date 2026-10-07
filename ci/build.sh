@@ -53,7 +53,7 @@ build_native() {
 
 build_psc() {
     banner "psc: the console (build_psc)"
-    configure build_psc -DCMAKE_BUILD_TYPE=Release -DCMAKE_TOOLCHAIN_FILE=/opt/ab/toolchains/psc/PSCtoolchainV8.cmake \
+    configure build_psc -DPE_MACHINE=psc -DCMAKE_BUILD_TYPE=Release -DCMAKE_TOOLCHAIN_FILE=/opt/ab/toolchains/psc/PSCtoolchainV8.cmake \
         -DAB_PSC_TOOLCHAIN="${AB_PSC_TOOLCHAIN:-/opt/psc}"
     ninja -C build_psc -j "$JOBS" pe
     # the console's glibc 2.24 / GLIBCXX 3.4.22, no RPATH
@@ -68,7 +68,7 @@ build_rpi() { # build_rpi rpi|rpi64
         key=linux-arm64
     fi
     banner "$target: Raspberry Pi ($dir -> $key)"
-    configure "$dir" -DCMAKE_BUILD_TYPE=Release -DCMAKE_TOOLCHAIN_FILE="$toolchain"
+    configure "$dir" -DPE_MACHINE="$target" -DCMAKE_BUILD_TYPE=Release -DCMAKE_TOOLCHAIN_FILE="$toolchain"
     ninja -C "$dir" -j "$JOBS" pe
     file "$dir/pe"
     stage "$dir/pe" "$key"
@@ -76,7 +76,7 @@ build_rpi() { # build_rpi rpi|rpi64
 
 build_pcusb() {
     banner "pcusb: the 32-bit PC stick (build_pcusb -> linux-i386)"
-    configure build_pcusb -DCMAKE_BUILD_TYPE=Release -DCMAKE_TOOLCHAIN_FILE=toolchains/pcusb/PcUsbToolchain.cmake
+    configure build_pcusb -DPE_MACHINE=pcusb -DCMAKE_BUILD_TYPE=Release -DCMAKE_TOOLCHAIN_FILE=toolchains/pcusb/PcUsbToolchain.cmake
     ninja -C build_pcusb -j "$JOBS"
     file build_pcusb/pe | grep -q 'ELF 32-bit LSB.*Intel 80386'
     # i386 runs here: the self-test again, on the stick's own architecture

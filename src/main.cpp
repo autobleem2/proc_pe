@@ -31,6 +31,8 @@
 //     a package with the same or an older Version than the installed one changes nothing; a newer Version
 //     replaces the folder but keeps every file of the old folder that the new package does not ship (saves,
 //     game data - merged in, at any depth).
+//   - one machine's packages only: a package whose Platform line names another machine than the one this binary is
+//     built for (PE_MACHINE, see thisMachine()) is left in Mods with a #WARN - no App, no marker. Game data is exempt.
 //   - safe unpacking: only the launcher folders are unpacked; a name with "..", an absolute name or a
 //     backslash anywhere in the package refuses the whole package; a link must point inside its own launcher
 //     folder (and is stored as a copy - the stick is FAT); size limits on a file, a package and the entry count.
@@ -63,6 +65,10 @@
 #endif
 
 using namespace std;
+
+#ifndef PE_MACHINE
+#define PE_MACHINE "" // the host and Windows builds: no machine, every package is taken
+#endif
 
 namespace {
 
@@ -1174,6 +1180,18 @@ string execKey(const Control &c) {
     return "psc";
 }
 
+// The machine this program runs on, as a platform key (psc, rpi, rpi64, pcusb): the build says it (-DPE_MACHINE, the
+// binary of each machine), $AB_PE_MACHINE overrides it (the self-test); empty - the host and Windows builds - means
+// every package is taken, as before. Any other value of $AB_PE_MACHINE ("any") also means every package.
+string thisMachine() {
+    const char *env = getenv("AB_PE_MACHINE");
+    string m = env ? lower(trim(env)) : string(PE_MACHINE);
+    for (const char *key : {"psc", "rpi", "rpi64", "pcusb"})
+        if (m == key)
+            return m;
+    return "";
+}
+
 string readmeText(const Control &c) {
     string text = shown(c.title, 200) + "\n";
     size_t lines = 0;
@@ -1372,8 +1390,9 @@ bool removeOldApp(const Paths &p, const string &name, const string &modName) {
 
 struct Result {
     bool ok = false;
+    bool left = false; // built for another machine: nothing was touched, `why` says so, the file stays in Mods
     string why;
-    vector<string> apps;            // the folders (pe-...) this package's Apps are in
+    vector<string> apps;           // the folders (pe-...) this package's Apps are in
     vector<string> packages;        // the folders of Packages/ (pe-...) its game data is in
     vector<string> removedApps;     // the Apps of older versions this package's data replaced
     vector<string> replacedSources; // the other packages whose App this one replaced (their .mod is retired)
@@ -1403,6 +1422,15 @@ Result convert(const Paths &p, const map<string, CompatRule> &compat, const stri
     control.version = shown(control.version, 60);
     if (!control.type.empty() && control.type != "USB_MOD") {
         result.why = "not a PE app package (Type " + shown(control.type, 40) + ")";
+        return result;
+    }
+    // a program built for another machine is not ours to convert: no App, nothing unpacked, the file stays in Mods
+    // (game data - Category: packages - is the same on every machine)
+    const string machine = thisMachine();
+    if (!machine.empty() && lower(trim(control.category)) != "packages" && execKey(control) != machine) {
+        result.left = true;
+        result.why = "built for " + (trim(control.platform).empty() ? string("the console") : shown(trim(control.platform), 40)) +
+                     ", this machine is " + machine + " - left in Mods";
         return result;
     }
     if (alreadyConverted(p, modName, total, control.version)) {
@@ -1810,7 +1838,9 @@ int start(const vector<string> &mods, const Paths &paths, const map<string, Comp
         say("#Converting " + fileName(mods[i]));
         say(to_string(i + 1) + "/" + to_string(mods.size()));
         Result r = convert(paths, compat, mods[i], true);
-        if (!r.ok) {
+        if (r.left) {
+            say("#WARN - " + fileName(mods[i]) + ": " + r.why);
+        } else if (!r.ok) {
             ++failed;
             if (firstReason.empty())
                 firstReason = fileName(mods[i]) + ": " + r.why;
