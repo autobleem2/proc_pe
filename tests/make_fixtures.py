@@ -147,8 +147,9 @@ def main():
     make_mod("normal_0.9.mod", "normalapp", "0.9", normal, "A normal app")
 
     # the machine a package is built for (APPS-13): the control file's Platform line picks app.ini's Exec.<key>=: the
-    # Raspberry Pi 32-bit ("RPI armhf") Exec.rpi, the console's, none and an unknown word Exec.psc
-    for name, platform in (("rpi", "RPI armhf"), ("noplat", None), ("oddplat", "SOMETHING arm64"), ("rpicase", "rpi")):
+    # Raspberry Pi 32-bit ("RPI armhf") Exec.rpi, "RPI64 arm64" Exec.rpi64, "PCUSB i386" Exec.pcusb, the console's, none and an unknown word Exec.psc
+    for name, platform in (("rpi", "RPI armhf"), ("noplat", None), ("oddplat", "SOMETHING arm64"), ("rpicase", "rpi"),
+                           ("rpi64", "RPI64 arm64"), ("pcusb", "PCUSB i386"), ("pcusbcase", "pcusb")):
         launcher = {name + "app": {"launcher.cfg": cfg(name + "app", name.title() + " App"), "launch.sh": LAUNCH}}
         make_mod("platform-%s_1.0.mod" % name, name + "app", "1.0", launcher, "Built for " + name, platform=platform)
 

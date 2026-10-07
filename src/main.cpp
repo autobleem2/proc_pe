@@ -1159,15 +1159,19 @@ string packageCategory(const Control &c) {
 }
 
 // The launcher platform key of the machine the package's program is built for, from the first word of its Platform
-// line: "RPI armhf" is the Raspberry Pi 32-bit ("rpi"); the console's "SONYPSC armhf", no Platform line and any
-// word we do not know are the console ("psc" - what every package made for the console's own environment says).
+// line: "RPI armhf" is the Raspberry Pi 32-bit ("rpi"), "RPI64 arm64" the 64-bit one ("rpi64"), "PCUSB i386" the PC
+// stick ("pcusb"); the console's "SONYPSC armhf", no Platform line and any word we do not know are the console ("psc" -
+// what every package made for the console's own environment says).
 // app.ini names the App's start (run.sh) for that key alone, so an App is listed only on the machine it was built for.
 string execKey(const Control &c) {
     string p = lower(trim(c.platform));
     size_t blank = p.find_first_of(" \t");
     if (blank != string::npos)
         p = p.substr(0, blank);
-    return p == "rpi" ? "rpi" : "psc";
+    for (const char *key : {"rpi", "rpi64", "pcusb"})
+        if (p == key)
+            return key;
+    return "psc";
 }
 
 string readmeText(const Control &c) {

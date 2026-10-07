@@ -334,7 +334,8 @@ int main() {
     const string appsP = root + "/AppsPlatform";
     makeDir(modsP);
     for (const char *name : {"platform-rpi_1.0.mod", "platform-noplat_1.0.mod", "platform-oddplat_1.0.mod",
-                             "platform-rpicase_1.0.mod"})
+                             "platform-rpicase_1.0.mod", "platform-rpi64_1.0.mod", "platform-pcusb_1.0.mod",
+                             "platform-pcusbcase_1.0.mod"})
         copyData(name, modsP);
     Run pl = run("--start --mods \"" + modsP + "\" --apps \"" + appsP + "\"");
     check(pl.code == 0, "the packages of every Platform are converted");
@@ -343,6 +344,16 @@ int main() {
           "\"Platform: RPI armhf\": Exec.rpi=run.sh and no Exec.psc, so only the Pi lists it");
     check(contains(readFile(appsP + "/pe-rpicaseapp/app.ini"), "Exec.rpi=run.sh\n"),
           "the Platform word is read without case and without a second word");
+    const string rpi64Ini = readFile(appsP + "/pe-rpi64app/app.ini");
+    check(contains(rpi64Ini, "Startup=run.sh\nExec.rpi64=run.sh\nCategory=PE\n") && !contains(rpi64Ini, "Exec.psc") &&
+              !contains(rpi64Ini, "Exec.rpi=") && !contains(rpi64Ini, "Exec.pcusb"),
+          "\"Platform: RPI64 arm64\": Exec.rpi64=run.sh only, so only the 64-bit Pi lists it (not the 32-bit one)");
+    const string pcusbIni = readFile(appsP + "/pe-pcusbapp/app.ini");
+    check(contains(pcusbIni, "Startup=run.sh\nExec.pcusb=run.sh\nCategory=PE\n") && !contains(pcusbIni, "Exec.psc") &&
+              !contains(pcusbIni, "Exec.rpi"),
+          "\"Platform: PCUSB i386\": Exec.pcusb=run.sh only, so only the PC stick lists it");
+    check(contains(readFile(appsP + "/pe-pcusbcaseapp/app.ini"), "Exec.pcusb=run.sh\n"),
+          "the PC stick's Platform word is read without case");
     for (const char *app : {"noplatapp", "oddplatapp"}) {
         const string ini = readFile(appsP + "/pe-" + app + "/app.ini");
         check(contains(ini, "Startup=run.sh\nExec.psc=run.sh\nCategory=PE\n") && !contains(ini, "Exec.rpi"),

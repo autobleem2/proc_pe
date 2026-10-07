@@ -38,8 +38,10 @@ that the compatibility list allows, `Apps/pe-<launcher_filename>/` holds:
   Readme=readme.txt
   Startup=run.sh
   Exec.psc=run.sh                      (so only the console lists it; Exec.rpi=run.sh for a package whose control file says
-                                        "Platform: RPI armhf" - only the Raspberry Pi 32-bit lists that one. The first word
-                                        of the Platform line decides, without case; no line or a word we do not know = psc)
+                                        "Platform: RPI armhf" - only the Raspberry Pi 32-bit lists that one; Exec.rpi64=run.sh
+                                        for "RPI64 arm64" (the 64-bit Pi), Exec.pcusb=run.sh for "PCUSB i386" (the PC stick).
+                                        The first word of the Platform line decides, without case; no line or a word we do
+                                        not know = psc)
   Category=PE                          (or the package type, see below)
   PeSource=<the .mod file name>
   PadMode=<pad= of the launcher's section in pe_compat.ini: psc, x360, psc-kernel or x360-kernel; psc-kernel without it>
