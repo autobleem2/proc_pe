@@ -774,6 +774,7 @@ struct Control {
     string maintainer;
     string type;
     string category;            // the package type ("Category: games"), as the packer wrote it: see packageCategory()
+    string platform;            // the machine ("Platform: SONYPSC armhf", "RPI armhf"), as the packer wrote it: see execKey()
     string title;               // the first line of Description
     vector<string> description; // the lines after it (continuation lines, ' .' as an empty line)
 };
@@ -793,6 +794,8 @@ Control parseControl(const string &text) {
                     c.type = trim(body.substr(5));
                 if (startsWith(lower(body), "category:"))
                     c.category = trim(body.substr(9));
+                if (startsWith(lower(body), "platform:"))
+                    c.platform = trim(body.substr(9));
             }
             continue;
         }
@@ -809,6 +812,8 @@ Control parseControl(const string &text) {
             c.type = value;
         else if (key == "category")
             c.category = value;
+        else if (key == "platform")
+            c.platform = value;
         else if (key == "description")
             c.title = value;
     }
@@ -1151,6 +1156,18 @@ string packageCategory(const Control &c) {
         if (value == known)
             return value;
     return "";
+}
+
+// The launcher platform key of the machine the package's program is built for, from the first word of its Platform
+// line: "RPI armhf" is the Raspberry Pi 32-bit ("rpi"); the console's "SONYPSC armhf", no Platform line and any
+// word we do not know are the console ("psc" - what every package made for the console's own environment says).
+// app.ini names the App's start (run.sh) for that key alone, so an App is listed only on the machine it was built for.
+string execKey(const Control &c) {
+    string p = lower(trim(c.platform));
+    size_t blank = p.find_first_of(" \t");
+    if (blank != string::npos)
+        p = p.substr(0, blank);
+    return p == "rpi" ? "rpi" : "psc";
 }
 
 string readmeText(const Control &c) {
@@ -1703,7 +1720,7 @@ Result convert(const Paths &p, const map<string, CompatRule> &compat, const stri
         string ini = "Title=" + appTitle + "\nAuthor=" + author + "\nVersion=" + shown(control.version, 60) + "\n";
         if (exists(l.staged + "/" + fn + ".png"))
             ini += "Image=" + fn + ".png\n";
-        ini += "Readme=readme.txt\nStartup=run.sh\nExec.psc=run.sh\nCategory=" +
+        ini += "Readme=readme.txt\nStartup=run.sh\nExec." + execKey(control) + "=run.sh\nCategory=" +
                (category.empty() ? string("PE") : category) + "\nPeSource=" + modName + "\nPadMode=" + pad + "\n";
         if (!dpad2analog.empty())
             ini += "Dpad2Analog=" + dpad2analog + "\n";
