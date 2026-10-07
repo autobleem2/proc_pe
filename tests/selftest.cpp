@@ -328,6 +328,28 @@ int main() {
           "a word that is no category: the App stays in PE apps, no suffix");
     check(!contains(readFile(appsT + "/pe-typedapp/readme.txt"), "Category"), "the category line is not in the readme");
 
+    // ---- the machine a package is built for (APPS-13): the Platform line picks the key app.ini starts the App for, so
+    // a Raspberry Pi lists only its own packages and the console only the console's
+    const string modsP = root + "/ModsPlatform";
+    const string appsP = root + "/AppsPlatform";
+    makeDir(modsP);
+    for (const char *name : {"platform-rpi_1.0.mod", "platform-noplat_1.0.mod", "platform-oddplat_1.0.mod",
+                             "platform-rpicase_1.0.mod"})
+        copyData(name, modsP);
+    Run pl = run("--start --mods \"" + modsP + "\" --apps \"" + appsP + "\"");
+    check(pl.code == 0, "the packages of every Platform are converted");
+    const string rpiIni = readFile(appsP + "/pe-rpiapp/app.ini");
+    check(contains(rpiIni, "Startup=run.sh\nExec.rpi=run.sh\nCategory=PE\n") && !contains(rpiIni, "Exec.psc"),
+          "\"Platform: RPI armhf\": Exec.rpi=run.sh and no Exec.psc, so only the Pi lists it");
+    check(contains(readFile(appsP + "/pe-rpicaseapp/app.ini"), "Exec.rpi=run.sh\n"),
+          "the Platform word is read without case and without a second word");
+    for (const char *app : {"noplatapp", "oddplatapp"}) {
+        const string ini = readFile(appsP + "/pe-" + app + "/app.ini");
+        check(contains(ini, "Startup=run.sh\nExec.psc=run.sh\nCategory=PE\n") && !contains(ini, "Exec.rpi"),
+              string(app) + ": no Platform line or a word we do not know is the console's (as before)");
+    }
+    check(contains(readFile(appsP + "/pe-rpiapp/run.sh"), "pe_run.sh"), "the Pi's App starts through the same runner");
+
     // ---- a Mods folder: two launchers, a blocked one, a hybrid, CRLF, and everything unsafe
     const string mods2 = root + "/Mods2";
     makeDir(mods2);

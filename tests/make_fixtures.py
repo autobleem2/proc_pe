@@ -53,12 +53,14 @@ def ar_bytes(members):
     return out
 
 
-def control_text(package, version, description, extra_type="USB_MOD", glue_author=False, category=None):
+def control_text(package, version, description, extra_type="USB_MOD", glue_author=False, category=None,
+                 platform="SONYPSC armhf"):
+    """platform: the Platform line's value ("RPI armhf" is a Raspberry Pi package); None leaves the line out"""
     text = (
         "Package: %s\nVersion: %s\nArchitecture: armhf\nMaintainer: ModMyClassic <contact@modmyclassic.com>\n"
         "Installed-Size: 10\nDescription: %s\n Type: %s\n The Project Eris package for %s.\n .\n Second paragraph.\n"
-        " Author: Someone\n Platform: SONYPSC armhf\n Git Commit: abc123\n Built: 2020-07-16\n"
-    ) % (package, version, description, extra_type, package)
+        " Author: Someone\n%s Git Commit: abc123\n Built: 2020-07-16\n"
+    ) % (package, version, description, extra_type, package, " Platform: %s\n" % platform if platform else "")
     if glue_author:
         text = text.replace(" Second paragraph.\n Author: Someone\n", " Second paragraph. Author: Someone\n")
     if category:
@@ -72,7 +74,7 @@ def control_text(package, version, description, extra_type="USB_MOD", glue_autho
 
 
 def make_mod(path, package, version, launchers, description=None, control_xz=False, extra=(), control_type="USB_MOD",
-             data_members=None, glue_author=False, category=None):
+             data_members=None, glue_author=False, category=None, platform="SONYPSC armhf"):
     """launchers: {dir: {relpath: bytes | (bytes, mode)}}; extra: more data members."""
     members = [("./", None, 0o755, "d")]
     for d, files in launchers.items():
@@ -83,7 +85,7 @@ def make_mod(path, package, version, launchers, description=None, control_xz=Fal
                 content, mode = content
             members.append((PREFIX + d + "/" + rel, content, mode, "f"))
     members.extend(extra)
-    control = tar_bytes([("./control", control_text(package, version, description or package.title(), control_type, glue_author, category).encode(), 0o644, "f")])
+    control = tar_bytes([("./control", control_text(package, version, description or package.title(), control_type, glue_author, category, platform).encode(), 0o644, "f")])
     if control_xz:
         control_member = ("control.tar.xz", lzma.compress(control, format=lzma.FORMAT_XZ, check=lzma.CHECK_CRC64))
     else:
@@ -143,6 +145,12 @@ def main():
     }
     make_mod("normal_1.1.mod", "normalapp", "1.1", normal2, "A normal app")
     make_mod("normal_0.9.mod", "normalapp", "0.9", normal, "A normal app")
+
+    # the machine a package is built for (APPS-13): the control file's Platform line picks app.ini's Exec.<key>=: the
+    # Raspberry Pi 32-bit ("RPI armhf") Exec.rpi, the console's, none and an unknown word Exec.psc
+    for name, platform in (("rpi", "RPI armhf"), ("noplat", None), ("oddplat", "SOMETHING arm64"), ("rpicase", "rpi")):
+        launcher = {name + "app": {"launcher.cfg": cfg(name + "app", name.title() + " App"), "launch.sh": LAUNCH}}
+        make_mod("platform-%s_1.0.mod" % name, name + "app", "1.0", launcher, "Built for " + name, platform=platform)
 
     # package types: the control file's "Category" (a Description line, or a field of its own) files the App in
     # that category as "<title> (mod)"; a word that is no category ("pe") is an untyped package
