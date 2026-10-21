@@ -148,9 +148,16 @@ def main():
 
     # the machine a package is built for (APPS-13): the control file's Platform line picks app.ini's Exec.<key>=: the
     # Raspberry Pi 32-bit ("RPI armhf") Exec.rpi, the console's, none and an unknown word Exec.psc
-    for name, platform in (("rpi", "RPI armhf"), ("noplat", None), ("oddplat", "SOMETHING arm64"), ("rpicase", "rpi")):
+    for name, platform in (("rpi", "RPI armhf"), ("noplat", None), ("oddplat", "SOMETHING arm64"), ("rpicase", "rpi"),
+                           ("rpi64", "RPI arm64"), ("pcusb", "PCUSB i386"), ("psc", "SONYPSC armhf"),
+                           ("rpi64case", "  Rpi   ARM64 "), ("rpiwrong", "RPI i386"), ("pcusbwrong", "PCUSB armhf")):
         launcher = {name + "app": {"launcher.cfg": cfg(name + "app", name.title() + " App"), "launch.sh": LAUNCH}}
         make_mod("platform-%s_1.0.mod" % name, name + "app", "1.0", launcher, "Built for " + name, platform=platform)
+
+    # one App built for several machines: the same App folder and version from one .mod per platform
+    for name, platform in (("rpi", "RPI armhf"), ("rpi64", "RPI arm64"), ("pcusb", "PCUSB i386")):
+        launcher = {"multiapp": {"launcher.cfg": cfg("multiapp", "Multi App"), "launch.sh": LAUNCH}}
+        make_mod("multi%s_1.0.mod" % name, "multiapp", "1.0", launcher, "Built for " + name, platform=platform)
 
     # package types: the control file's "Category" (a Description line, or a field of its own) files the App in
     # that category as "<title> (mod)"; a word that is no category ("pe") is an untyped package

@@ -350,6 +350,61 @@ int main() {
     }
     check(contains(readFile(appsP + "/pe-rpiapp/run.sh"), "pe_run.sh"), "the Pi's App starts through the same runner");
 
+    // ---- the whole Platform line (1.4.0): armhf stays as it was, arm64 and the PC get a key of their own
+    check(readFile(appsP + "/pe-rpiapp/app.ini") ==
+              "Title=Rpi App\nAuthor=ModMyClassic\nVersion=1.0\nReadme=readme.txt\nStartup=run.sh\nExec.rpi=run.sh\n"
+              "Category=PE\nPeSource=platform-rpi_1.0.mod\nPadMode=psc-kernel\n",
+          "\"RPI armhf\": app.ini is byte for byte what 1.3.0 wrote");
+    struct KeyCase {
+        const char *app, *key, *why;
+    };
+    const KeyCase keyCases[] = {{"rpi64app", "rpi64", "\"RPI arm64\""},
+                                {"rpi64caseapp", "rpi64", "\"  Rpi   ARM64 \" (case and blanks)"},
+                                {"pcusbapp", "pcusb", "\"PCUSB i386\""},
+                                {"pscapp", "psc", "\"SONYPSC armhf\""},
+                                {"rpiwrongapp", "psc", "\"RPI i386\" (not a Pi's architecture)"},
+                                {"pcusbwrongapp", "psc", "\"PCUSB armhf\" (not the PC's architecture)"}};
+    for (const char *app : {"rpi64app", "rpi64caseapp", "pcusbapp", "pscapp", "rpiwrongapp", "pcusbwrongapp"})
+        copyData(string("platform-") + string(app).substr(0, string(app).size() - 3) + "_1.0.mod", modsP);
+    Run pl2 = run("--start --mods \"" + modsP + "\" --apps \"" + appsP + "\"");
+    check(pl2.code == 0, "the packages of the other platforms are converted");
+    for (const KeyCase &kc : keyCases) {
+        const string ini = readFile(appsP + "/pe-" + kc.app + "/app.ini");
+        const string want = string("Startup=run.sh\nExec.") + kc.key + "=run.sh\nCategory=PE\n";
+        size_t keys = 0;
+        for (size_t at = ini.find("Exec."); at != string::npos; at = ini.find("Exec.", at + 1))
+            keys++;
+        check(contains(ini, want) && keys == 1, string(kc.why) + ": Exec." + kc.key + "=run.sh and no other Exec key");
+    }
+
+    // one App folder from one .mod per platform: each key is the key of its own .mod, and a later .mod of another
+    // platform and the same version leaves the App (and its key) of the first one alone
+    const string modsM = root + "/ModsMulti", appsM = root + "/AppsMulti";
+    makeDir(modsM);
+    for (const char *name : {"multirpi", "multirpi64", "multipcusb"}) {
+        const string mod = string(name) + "_1.0.mod";
+        const string key = string(name) == "multirpi" ? "rpi" : string(name) == "multirpi64" ? "rpi64" : "pcusb";
+        const string single = root + "/AppsMulti_" + name;
+        makeDir(modsM + "_" + name);
+        copyData(mod.c_str(), modsM + "_" + name);
+        Run one = run("--start --mods \"" + modsM + "_" + name + "\" --apps \"" + single + "\"");
+        check(one.code == 0, string(name) + ": converted");
+        check(contains(readFile(single + "/pe-multiapp/app.ini"), "Exec." + key + "=run.sh\n"),
+              string(name) + ": its own key, Exec." + key);
+        copyData(mod.c_str(), modsM);
+    }
+    Run multi = run("--start --mods \"" + modsM + "\" --apps \"" + appsM + "\"");
+    check(multi.code == 0, "a set of .mods of one App for three platforms is converted");
+    const string multiIni = readFile(appsM + "/pe-multiapp/app.ini");
+    size_t multiKeys = 0;
+    for (size_t at = multiIni.find("Exec."); at != string::npos; at = multiIni.find("Exec.", at + 1))
+        multiKeys++;
+    check(multiKeys == 1, "one platform's key does not overwrite or join another's in the merged App folder");
+    check(contains(multiIni, "Exec.pcusb=run.sh\n") && contains(multiIni, "PeSource=multipcusb_1.0.mod\n"),
+          "the first .mod's App and key stay (the Mods folder is read in name order)");
+    Run multiAgain = run("--start --mods \"" + modsM + "\" --apps \"" + appsM + "\"");
+    check(readFile(appsM + "/pe-multiapp/app.ini") == multiIni, "run again: the App folder is unchanged");
+
     // ---- a Mods folder: two launchers, a blocked one, a hybrid, CRLF, and everything unsafe
     const string mods2 = root + "/Mods2";
     makeDir(mods2);
