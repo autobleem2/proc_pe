@@ -37,9 +37,10 @@ that the compatibility list allows, `Apps/pe-<launcher_filename>/` holds:
   Image=<launcher_filename>.png        (only if the file exists)
   Readme=readme.txt
   Startup=run.sh
-  Exec.psc=run.sh                      (so only the console lists it; Exec.rpi=run.sh for a package whose control file says
-                                        "Platform: RPI armhf" - only the Raspberry Pi 32-bit lists that one. The first word
-                                        of the Platform line decides, without case; no line or a word we do not know = psc)
+  Exec.psc=run.sh                      (so only the console lists it. The whole Platform line of the control file decides, without
+                                        case: "RPI armhf" = Exec.rpi, "RPI arm64" = Exec.rpi64, "PCUSB i386" = Exec.pcusb - only
+                                        that machine lists the App; a bare "RPI" is Exec.rpi; no line, "SONYPSC armhf" or any
+                                        line we do not know = Exec.psc)
   Category=PE                          (or the package type, see below)
   PeSource=<the .mod file name>
   PadMode=<pad= of the launcher's section in pe_compat.ini: psc, x360, psc-kernel or x360-kernel; psc-kernel without it>
@@ -131,5 +132,12 @@ It prints, flushed line by line: `#Starting - <title>`, `#Converting <file>`, `n
 - The self-test (`tests/selftest.cpp`) runs the real program on the packages in `tests/data/`, made by
   `tests/make_fixtures.py` (Python standard library, so unsafe ones can be made too) and `tests/make_dpkg_fixture.sh`
   (the real `dpkg-deb`).
+
+One platform's `.mod` per App and version in a Mods folder; a foreign one is skipped with a warning.
+
+## Changes
+
+- 1.4.0 - the whole Platform line picks app.ini's Exec key: "RPI armhf" `Exec.rpi`, "RPI arm64" `Exec.rpi64`,
+  "PCUSB i386" `Exec.pcusb`, anything else `Exec.psc` (armhf output unchanged).
 
 GPL-3.0-or-later (`LICENSE`); miniz is MIT, libarchive BSD-2-Clause, liblzma 0BSD (`third_party/*`).

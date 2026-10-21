@@ -1158,16 +1158,32 @@ string packageCategory(const Control &c) {
     return "";
 }
 
-// The launcher platform key of the machine the package's program is built for, from the first word of its Platform
-// line: "RPI armhf" is the Raspberry Pi 32-bit ("rpi"); the console's "SONYPSC armhf", no Platform line and any
-// word we do not know are the console ("psc" - what every package made for the console's own environment says).
+// The launcher platform key of the machine the package's program is built for, from the WHOLE Platform line (the
+// machine and its architecture, words in any case and any blanks): "RPI armhf" is the Raspberry Pi 32-bit ("rpi"),
+// "RPI arm64" the Pi 64-bit ("rpi64"), "PCUSB i386" the PC ("pcusb"); a bare "RPI" is the 32-bit Pi as it always was.
+// The console's "SONYPSC armhf", no Platform line and any line we do not know are the console ("psc" - what every
+// package made for the console's own environment says), so "RPI i386" is not a Pi's.
 // app.ini names the App's start (run.sh) for that key alone, so an App is listed only on the machine it was built for.
 string execKey(const Control &c) {
-    string p = lower(trim(c.platform));
-    size_t blank = p.find_first_of(" \t");
-    if (blank != string::npos)
-        p = p.substr(0, blank);
-    return p == "rpi" ? "rpi" : "psc";
+    string whole;
+    bool gap = false;
+    for (char ch : lower(trim(c.platform))) {
+        if (ch == ' ' || ch == '\t') {
+            gap = true;
+            continue;
+        }
+        if (gap)
+            whole += ' ';
+        gap = false;
+        whole += ch;
+    }
+    if (whole == "rpi armhf" || whole == "rpi")
+        return "rpi";
+    if (whole == "rpi arm64")
+        return "rpi64";
+    if (whole == "pcusb i386")
+        return "pcusb";
+    return "psc";
 }
 
 string readmeText(const Control &c) {
@@ -1689,8 +1705,19 @@ Result convert(const Paths &p, const map<string, CompatRule> &compat, const stri
             }
             // the same version from another file: nothing to do (and not this package's App); the same file
             // changed under the same version is made again
-            if (cmp == 0 && have.get("pesource") != modName)
+            if (cmp == 0 && have.get("pesource") != modName) {
+                // a .mod of another platform is left out too (keys are never merged: a merged key would start the
+                // other platform's program) - and said so
+                string haveKey;
+                for (const auto &kv : have.keys)
+                    if (kv.first.compare(0, 5, "exec.") == 0)
+                        haveKey = kv.first.substr(5);
+                if (!haveKey.empty() && haveKey != execKey(control))
+                    say("#WARN - " + modName + ": " + title + " " + shown(control.version, 40) + " not added (its " +
+                        execKey(control) + " package is skipped, the " + shown(haveKey, 20) + " one from " +
+                        shown(have.get("pesource"), 80) + " is installed)");
                 continue;
+            }
             if (have.get("pesource") != modName)
                 result.replacedSources.push_back(have.get("pesource"));
         }
