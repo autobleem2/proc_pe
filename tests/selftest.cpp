@@ -402,6 +402,11 @@ int main() {
     check(multiKeys == 1, "one platform's key does not overwrite or join another's in the merged App folder");
     check(contains(multiIni, "Exec.pcusb=run.sh\n") && contains(multiIni, "PeSource=multipcusb_1.0.mod\n"),
           "the first .mod's App and key stay (the Mods folder is read in name order)");
+    check(multi.has("#WARN - multirpi_1.0.mod: Multi App 1.0 not added (its rpi package is skipped, the pcusb one "
+                    "from multipcusb_1.0.mod is installed)") &&
+              multi.has("#WARN - multirpi64_1.0.mod: Multi App 1.0 not added (its rpi64 package is skipped, the pcusb "
+                        "one from multipcusb_1.0.mod is installed)"),
+          "a .mod of another platform for the same App and version is skipped with a #WARN naming both platforms");
     Run multiAgain = run("--start --mods \"" + modsM + "\" --apps \"" + appsM + "\"");
     check(readFile(appsM + "/pe-multiapp/app.ini") == multiIni, "run again: the App folder is unchanged");
 

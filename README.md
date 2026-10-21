@@ -133,6 +133,8 @@ It prints, flushed line by line: `#Starting - <title>`, `#Converting <file>`, `n
   `tests/make_fixtures.py` (Python standard library, so unsafe ones can be made too) and `tests/make_dpkg_fixture.sh`
   (the real `dpkg-deb`).
 
+One platform's `.mod` per App and version in a Mods folder; a foreign one is skipped with a warning.
+
 ## Changes
 
 - 1.4.0 - the whole Platform line picks app.ini's Exec key: "RPI armhf" `Exec.rpi`, "RPI arm64" `Exec.rpi64`,

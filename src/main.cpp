@@ -1705,8 +1705,19 @@ Result convert(const Paths &p, const map<string, CompatRule> &compat, const stri
             }
             // the same version from another file: nothing to do (and not this package's App); the same file
             // changed under the same version is made again
-            if (cmp == 0 && have.get("pesource") != modName)
+            if (cmp == 0 && have.get("pesource") != modName) {
+                // a .mod of another platform is left out too (keys are never merged: a merged key would start the
+                // other platform's program) - and said so
+                string haveKey;
+                for (const auto &kv : have.keys)
+                    if (kv.first.compare(0, 5, "exec.") == 0)
+                        haveKey = kv.first.substr(5);
+                if (!haveKey.empty() && haveKey != execKey(control))
+                    say("#WARN - " + modName + ": " + title + " " + shown(control.version, 40) + " not added (its " +
+                        execKey(control) + " package is skipped, the " + shown(haveKey, 20) + " one from " +
+                        shown(have.get("pesource"), 80) + " is installed)");
                 continue;
+            }
             if (have.get("pesource") != modName)
                 result.replacedSources.push_back(have.get("pesource"));
         }
